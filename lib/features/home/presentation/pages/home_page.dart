@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:football/core/theme/theme_mode_provider.dart';
 import 'package:football/core/theme/app_theme.dart';
+import 'package:football/core/theme/theme_mode_provider.dart';
+import 'package:football/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:football/features/fields/data/models/field_model.dart';
@@ -32,18 +33,17 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget build(BuildContext context) {
     final fieldsAsync = ref.watch(fieldsProvider);
     final theme = Theme.of(context);
-
-    debugPrint('FIELDS ASYNC = $fieldsAsync');
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('FootballBook'),
+        title: Text(l10n.appTitle),
         actions: [
           Consumer(
             builder: (context, ref, _) {
               final mode = ref.watch(themeModeProvider);
               return IconButton(
-                tooltip: 'Toggle Theme',
+                tooltip: AppLocalizations.of(context)!.toggleTheme,
                 icon: Icon(
                   mode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode,
                 ),

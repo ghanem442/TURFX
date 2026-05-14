@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:football/core/network/api_client.dart';
+import 'package:football/core/network/backend_error_text.dart';
 
 import '../models/admin_wallet_transaction_model.dart';
 
@@ -24,7 +25,7 @@ class AdminWalletRepository {
 
       final plainMsg = error['message']?.toString();
       if (plainMsg != null && plainMsg.trim().isNotEmpty) {
-        return plainMsg.trim();
+        return humanizeBackendErrorText(plainMsg.trim());
       }
     }
 
@@ -39,7 +40,7 @@ class AdminWalletRepository {
 
     final plain = message?.toString();
     if (plain != null && plain.trim().isNotEmpty) {
-      return plain.trim();
+      return humanizeBackendErrorText(plain.trim());
     }
 
     return 'Request failed';
@@ -128,7 +129,7 @@ class AdminWalletRepository {
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }

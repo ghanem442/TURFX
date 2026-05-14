@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../providers/booking_providers.dart';
 import '../../data/models/booking_model.dart';
+import '../providers/booking_providers.dart';
+import '../providers/payment_local_store_provider.dart';
 import 'booking_confirmation_page.dart';
 
 class MyBookingsPage extends ConsumerStatefulWidget {
@@ -143,6 +144,10 @@ class _MyBookingsPageState extends ConsumerState<MyBookingsPage>
         ).future,
       );
 
+      await ref.read(paymentLocalStoreProvider).clearPaymentId(
+            bookingId: booking.id,
+          );
+
       _invalidateAllBookingTabs();
       ref.invalidate(bookingByIdProvider(booking.id));
       ref.invalidate(bookingQrProvider(booking.id));
@@ -206,6 +211,72 @@ class _MyBookingsPageState extends ConsumerState<MyBookingsPage>
     return booking.canShowQr;
   }
 
+  bool _shouldShowContinuePayment(BookingModel booking) {
+    return booking.statusUpper == 'PENDING_PAYMENT';
+  }
+
+  bool _shouldShowPaymentFailedInfo(BookingModel booking) {
+    return booking.statusUpper == 'PAYMENT_FAILED';
+  }
+
+  String _paymentSummary(BookingModel booking, {required bool hasSavedPayment}) {
+    final gateway = (booking.paymentGateway ?? '').trim();
+    final paymentStatus = (booking.paymentStatus ?? '').trim();
+    final statusUpper = booking.statusUpper;
+
+    if (statusUpper == 'PENDING_PAYMENT') {
+      if (hasSavedPayment) {
+        if (gateway.isNotEmpty) {
+          return paymentStatus.isNotEmpty
+              ? 'Payment in progress via $gateway • $paymentStatus'
+              : 'Payment in progress via $gateway • waiting for screenshot/review';
+        }
+        return 'Payment started and saved locally • continue to finish';
+      }
+
+      if (gateway.isNotEmpty) {
+        return paymentStatus.isNotEmpty
+            ? 'Manual payment via $gateway • $paymentStatus'
+            : 'Manual payment via $gateway • waiting for screenshot/review';
+      }
+
+      return 'Waiting for manual payment submission';
+    }
+
+    if (statusUpper == 'PAYMENT_FAILED') {
+      return 'Payment failed or was rejected';
+    }
+
+    if (statusUpper == 'CONFIRMED') {
+      if (gateway.isNotEmpty && paymentStatus.isNotEmpty) {
+        return 'Payment confirmed via $gateway • $paymentStatus';
+      }
+      if (gateway.isNotEmpty) {
+        return 'Payment confirmed via $gateway';
+      }
+      return 'Booking confirmed';
+    }
+
+    if (statusUpper == 'CHECKED_IN') {
+      if (gateway.isNotEmpty && paymentStatus.isNotEmpty) {
+        return 'Checked in • $gateway • $paymentStatus';
+      }
+      return 'Checked in successfully';
+    }
+
+    if (gateway.isNotEmpty) {
+      return paymentStatus.isNotEmpty
+          ? 'Payment: $gateway • $paymentStatus'
+          : 'Payment: $gateway';
+    }
+
+    if (paymentStatus.isNotEmpty) {
+      return 'Payment status: $paymentStatus';
+    }
+
+    return 'Payment status unavailable';
+  }
+
   @override
   Widget build(BuildContext context) {
     final query = _currentQuery();
@@ -223,6 +294,13 @@ class _MyBookingsPageState extends ConsumerState<MyBookingsPage>
           tooltip: 'Home',
           onPressed: () => context.go('/home'),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh),
+            onPressed: _refresh,
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
@@ -266,27 +344,46 @@ class _MyBookingsPageState extends ConsumerState<MyBookingsPage>
                   final booking = bookings[index];
                   final isCancelling = _cancellingBookingId == booking.id;
 
-                  return TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: 1),
-                    duration: Duration(milliseconds: 220 + (index * 35)),
-                    curve: Curves.easeOutCubic,
-                    builder: (context, t, child) {
-                      return Opacity(
-                        opacity: t,
-                        child: Transform.translate(
-                          offset: Offset(0, (1 - t) * 10),
-                          child: child,
+                  return FutureBuilder<String?>(
+                    future: ref.read(paymentLocalStoreProvider).getPaymentId(
+                          bookingId: booking.id,
+                        ),
+                    builder: (context, snapshot) {
+                      final hasSavedPayment =
+                          (snapshot.data?.trim().isNotEmpty ?? false);
+
+                      return TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0, end: 1),
+                        duration: Duration(milliseconds: 220 + (index * 35)),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, t, child) {
+                          return Opacity(
+                            opacity: t,
+                            child: Transform.translate(
+                              offset: Offset(0, (1 - t) * 10),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: _BookingCard(
+                          booking: booking,
+                          isCancelling: isCancelling,
+                          canShowQr: _shouldShowQr(booking),
+                          showContinuePayment:
+                              _shouldShowContinuePayment(booking),
+                          showPaymentFailedInfo:
+                              _shouldShowPaymentFailedInfo(booking),
+                          hasSavedPayment: hasSavedPayment,
+                          paymentSummary: _paymentSummary(
+                            booking,
+                            hasSavedPayment: hasSavedPayment,
+                          ),
+                          onCancel: booking.canCancel && !isCancelling
+                              ? () => _cancelBooking(booking)
+                              : null,
                         ),
                       );
                     },
-                    child: _BookingCard(
-                      booking: booking,
-                      isCancelling: isCancelling,
-                      canShowQr: _shouldShowQr(booking),
-                      onCancel: booking.canCancel && !isCancelling
-                          ? () => _cancelBooking(booking)
-                          : null,
-                    ),
                   );
                 },
               );
@@ -303,12 +400,20 @@ class _BookingCard extends StatelessWidget {
   final VoidCallback? onCancel;
   final bool canShowQr;
   final bool isCancelling;
+  final bool showContinuePayment;
+  final bool showPaymentFailedInfo;
+  final bool hasSavedPayment;
+  final String paymentSummary;
 
   const _BookingCard({
     required this.booking,
     required this.onCancel,
     required this.canShowQr,
     required this.isCancelling,
+    required this.showContinuePayment,
+    required this.showPaymentFailedInfo,
+    required this.hasSavedPayment,
+    required this.paymentSummary,
   });
 
   @override
@@ -428,19 +533,80 @@ class _BookingCard extends StatelessWidget {
                   ],
                 ),
               ],
-              if (booking.paymentGateway != null &&
-                  booking.paymentGateway!.trim().isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.credit_card, size: 16),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Payment: ${booking.paymentGateway} • ${booking.paymentStatus ?? "-"}',
-                      ),
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.credit_card, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(paymentSummary),
+                  ),
+                ],
+              ),
+              if (status == 'PENDING_PAYMENT') ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withAlpha(24),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.orange.withAlpha(60),
                     ),
-                  ],
+                  ),
+                  child: Text(
+                    hasSavedPayment
+                        ? 'فيه عملية دفع محفوظة بالفعل لهذا الحجز. افتح التفاصيل لاستكمال الرفع أو متابعة المراجعة.'
+                        : 'هذا الحجز غير مؤكد بعد. افتح التفاصيل لاستكمال الدفع اليدوي ورفع إثبات التحويل.',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.orange,
+                    ),
+                  ),
+                ),
+              ],
+              if (showPaymentFailedInfo) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withAlpha(18),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.red.withAlpha(50),
+                    ),
+                  ),
+                  child: const Text(
+                    'فشل الدفع أو تم رفضه أو انتهت صلاحيته. ستحتاج إلى إنشاء حجز جديد إذا أردت المحاولة مرة أخرى.',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.red,
+                    ),
+                  ),
+                ),
+              ],
+              if (status == 'CHECKED_IN') ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blueGrey.withAlpha(18),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.blueGrey.withAlpha(50),
+                    ),
+                  ),
+                  child: const Text(
+                    'تم تسجيل الدخول لهذا الحجز بالفعل.',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.blueGrey,
+                    ),
+                  ),
                 ),
               ],
               const SizedBox(height: 14),
@@ -455,8 +621,15 @@ class _BookingCard extends StatelessWidget {
                         extra: BookingConfirmationArgs(booking: booking),
                       );
                     },
-                    icon: const Icon(Icons.receipt_long, size: 18),
-                    label: const Text('Details'),
+                    icon: Icon(
+                      showContinuePayment
+                          ? Icons.payments_outlined
+                          : Icons.receipt_long,
+                      size: 18,
+                    ),
+                    label: Text(
+                      showContinuePayment ? 'Continue Payment' : 'Details',
+                    ),
                   ),
                   if (booking.canCancel)
                     TextButton.icon(
@@ -560,16 +733,6 @@ class _StatusBadge extends StatelessWidget {
         bg = Colors.deepOrange.withAlpha(35);
         fg = Colors.deepOrange;
         label = 'Payment Failed';
-        break;
-      case 'PARTIALLY_REFUNDED':
-        bg = Colors.orange.withAlpha(30);
-        fg = Colors.orange;
-        label = 'Partially Refunded';
-        break;
-      case 'REFUND_FAILED':
-        bg = Colors.red.withAlpha(40);
-        fg = Colors.red;
-        label = 'Refund Failed';
         break;
       default:
         bg = Colors.grey.withAlpha(38);

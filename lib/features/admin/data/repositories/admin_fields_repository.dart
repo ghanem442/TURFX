@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:football/core/network/api_client.dart';
+import 'package:football/core/network/backend_error_text.dart';
 
 import '../models/admin_field_model.dart';
 
@@ -27,7 +28,7 @@ class AdminFieldsRepository {
         if (plainMsg.trim() == 'common.badRequest') {
           return 'الطلب غير صالح أو العملية غير مسموحة للحالة الحالية.';
         }
-        return plainMsg.trim();
+        return humanizeBackendErrorText(plainMsg.trim());
       }
 
       final code = error['code']?.toString().trim();
@@ -38,7 +39,7 @@ class AdminFieldsRepository {
           case 'VALIDATION_ERROR':
             return 'البيانات المرسلة غير صحيحة.';
           default:
-            return code;
+            return humanizeBackendErrorText(code);
         }
       }
     }
@@ -54,7 +55,7 @@ class AdminFieldsRepository {
 
     final plain = message?.toString();
     if (plain != null && plain.trim().isNotEmpty) {
-      return plain.trim();
+      return humanizeBackendErrorText(plain.trim());
     }
 
     return 'Request failed';
@@ -187,7 +188,7 @@ class AdminFieldsRepository {
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -221,7 +222,7 @@ class AdminFieldsRepository {
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -266,7 +267,7 @@ class AdminFieldsRepository {
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }

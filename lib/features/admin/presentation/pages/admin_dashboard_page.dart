@@ -61,6 +61,18 @@ class AdminDashboardPage extends ConsumerWidget {
         route: '/admin/bookings',
       ),
       const _DashboardMenuItem(
+        title: 'Pending Payments',
+        subtitle: 'Review manual payment submissions',
+        icon: Icons.payments_outlined,
+        route: '/admin/payments',
+      ),
+      const _DashboardMenuItem(
+        title: 'Payment Accounts',
+        subtitle: 'Manage payment phone numbers',
+        icon: Icons.phone_android_outlined,
+        route: '/admin/payment-accounts',
+      ),
+      const _DashboardMenuItem(
         title: 'Withdrawal Requests',
         subtitle: 'Review owner withdrawal requests',
         icon: Icons.outbox_outlined,
@@ -234,7 +246,7 @@ class _WelcomeCard extends StatelessWidget {
                   ),
                   SizedBox(height: 4),
                   Text(
-                    'Manage users, fields, bookings, wallet activity, platform balance, withdrawal requests, and system settings from here.',
+                    'Manage users, fields, bookings, pending manual payments, wallet activity, platform balance, withdrawal requests, and system settings from here.',
                   ),
                 ],
               ),

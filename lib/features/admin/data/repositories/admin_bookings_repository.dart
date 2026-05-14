@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:football/core/network/api_client.dart';
+import 'package:football/core/network/backend_error_text.dart';
 
 import '../models/admin_booking_model.dart';
 
@@ -24,7 +25,31 @@ class AdminBookingsRepository {
 
       final plainMsg = error['message']?.toString();
       if (plainMsg != null && plainMsg.trim().isNotEmpty) {
-        return plainMsg;
+        return humanizeBackendErrorText(plainMsg);
+      }
+
+      final details = error['details'];
+      if (details is List && details.isNotEmpty) {
+        for (final item in details) {
+          if (item is Map) {
+            final msg = item['message'];
+            if (msg is Map) {
+              final ar = msg['ar']?.toString();
+              final en = msg['en']?.toString();
+              if (ar != null && ar.trim().isNotEmpty) return ar;
+              if (en != null && en.trim().isNotEmpty) return en;
+            }
+            final plain = item['message']?.toString();
+            if (plain != null && plain.trim().isNotEmpty) {
+              return humanizeBackendErrorText(plain);
+            }
+          } else {
+            final plain = item?.toString().trim();
+            if (plain != null && plain.isNotEmpty) {
+              return humanizeBackendErrorText(plain);
+            }
+          }
+        }
       }
     }
 
@@ -39,7 +64,7 @@ class AdminBookingsRepository {
 
     final plain = message?.toString();
     if (plain != null && plain.trim().isNotEmpty) {
-      return plain;
+      return humanizeBackendErrorText(plain);
     }
 
     return 'Request failed';
@@ -61,10 +86,14 @@ class AdminBookingsRepository {
         queryParameters: {
           'page': page,
           'limit': limit,
-          if (status != null && status.trim().isNotEmpty) 'status': status.trim(),
-          if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
-          if (fieldId != null && fieldId.trim().isNotEmpty) 'fieldId': fieldId.trim(),
-          if (ownerId != null && ownerId.trim().isNotEmpty) 'ownerId': ownerId.trim(),
+          if (status != null && status.trim().isNotEmpty)
+            'status': status.trim(),
+          if (search != null && search.trim().isNotEmpty)
+            'search': search.trim(),
+          if (fieldId != null && fieldId.trim().isNotEmpty)
+            'fieldId': fieldId.trim(),
+          if (ownerId != null && ownerId.trim().isNotEmpty)
+            'ownerId': ownerId.trim(),
           if (startDate != null) 'startDate': _dateOnly(startDate),
           if (endDate != null) 'endDate': _dateOnly(endDate),
         },
@@ -78,7 +107,7 @@ class AdminBookingsRepository {
         throw Exception('Invalid bookings response');
       }
 
-      final body = raw.cast<String, dynamic>();
+      final body = Map<String, dynamic>.from(raw);
 
       if (res.statusCode != null && res.statusCode! >= 400) {
         throw Exception(_extractErrorMessage(body));
@@ -100,14 +129,18 @@ class AdminBookingsRepository {
 
       return bookingsNode
           .whereType<Map>()
-          .map((e) => AdminBookingModel.fromJson(Map<String, dynamic>.from(e)))
+          .map(
+            (e) => AdminBookingModel.fromJson(
+              Map<String, dynamic>.from(e),
+            ),
+          )
           .toList();
     } on DioException catch (e) {
       final raw = e.response?.data;
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }

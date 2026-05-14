@@ -102,9 +102,15 @@ class AdminPlatformWalletNotifier extends Notifier<AdminPlatformWalletState> {
         bookingId: state.bookingId.trim().isEmpty ? null : state.bookingId.trim(),
       );
 
-      final wallet = await walletFuture;
-      final summary = await summaryFuture;
-      final result = await txFuture;
+      final results = await Future.wait([
+        walletFuture,
+        summaryFuture,
+        txFuture,
+      ]);
+
+      final wallet = results[0] as AdminPlatformWalletModel;
+      final summary = results[1] as AdminPlatformWalletSummaryModel;
+      final result = results[2] as AdminPlatformWalletTransactionsResult;
 
       state = state.copyWith(
         isLoading: false,

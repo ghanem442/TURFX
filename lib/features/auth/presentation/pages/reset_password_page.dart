@@ -3,14 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/network/providers.dart';
+import '../../data/auth_repository_provider.dart';
 import '../../../../core/theme/app_theme.dart';
 
 class ResetPasswordPage extends ConsumerStatefulWidget {
   final String? email;
-  final String? token;
+  final String? otp;
 
-  const ResetPasswordPage({super.key, this.email, this.token});
+  const ResetPasswordPage({super.key, this.email, this.otp});
 
   @override
   ConsumerState<ResetPasswordPage> createState() => _ResetPasswordPageState();
@@ -33,9 +33,9 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
   void initState() {
     super.initState();
 
-    final initialCode = (widget.token ?? '').trim();
-    if (initialCode.isNotEmpty) {
-      _codeCtrl.text = initialCode;
+    final initialOtp = (widget.otp ?? '').trim();
+    if (initialOtp.isNotEmpty) {
+      _codeCtrl.text = initialOtp;
     }
   }
 
@@ -45,52 +45,6 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
     _passCtrl.dispose();
     _confirmCtrl.dispose();
     super.dispose();
-  }
-
-  String _extractMessage(dynamic raw) {
-    if (raw is Map) {
-      final error = raw['error'];
-
-      if (error is Map) {
-        final msg = error['message'];
-
-        if (msg is String && msg.trim().isNotEmpty) {
-          return msg.trim();
-        }
-
-        if (msg is Map) {
-          final ar = msg['ar']?.toString().trim();
-          final en = msg['en']?.toString().trim();
-
-          if (ar != null && ar.isNotEmpty) return ar;
-          if (en != null && en.isNotEmpty) return en;
-        }
-
-        if (msg is List && msg.isNotEmpty) {
-          return msg.join('\n');
-        }
-      }
-
-      final message = raw['message'];
-
-      if (message is String && message.trim().isNotEmpty) {
-        return message.trim();
-      }
-
-      if (message is Map) {
-        final ar = message['ar']?.toString().trim();
-        final en = message['en']?.toString().trim();
-
-        if (ar != null && ar.isNotEmpty) return ar;
-        if (en != null && en.isNotEmpty) return en;
-      }
-
-      if (message is List && message.isNotEmpty) {
-        return message.join('\n');
-      }
-    }
-
-    return 'Request failed';
   }
 
   Future<void> _submit() async {
@@ -159,33 +113,23 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
     setState(() => _loading = true);
 
     try {
-      final api = ref.read(apiClientProvider);
-
-      final res = await api.post(
-        'auth/reset-password',
-        data: {
-          'email': email,
-          'otp': otp,
-          'newPassword': pass,
-        },
+      final repo = ref.read(authRepositoryProvider);
+      final res = await repo.resetPassword(
+        email: email,
+        otp: otp,
+        newPassword: pass,
       );
-
-      final raw = res.data;
-      final statusCode = res.statusCode;
-      final isOk =
-          statusCode != null &&
-          statusCode < 400 &&
-          raw is Map &&
-          (raw['success'] == true || raw['success'] == null);
-
-      final msg = _extractMessage(raw);
 
       if (!mounted) return;
 
-      if (!isOk) {
+      if (res.success != true) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(msg == 'Request failed' ? 'Password reset failed' : msg),
+            content: Text(
+              (res.message ?? '').trim().isNotEmpty
+                  ? res.message!.trim()
+                  : 'Password reset failed',
+            ),
           ),
         );
         return;
@@ -194,7 +138,9 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            msg == 'Request failed' ? 'Password reset successful' : msg,
+            (res.message ?? '').trim().isNotEmpty
+                ? res.message!.trim()
+                : 'Password reset successful',
           ),
         ),
       );
@@ -203,9 +149,9 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to reset password: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to reset password: $e')),
+      );
     } finally {
       if (mounted) {
         setState(() => _loading = false);

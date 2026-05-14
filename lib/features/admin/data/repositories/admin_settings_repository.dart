@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:football/core/network/api_client.dart';
+import 'package:football/core/network/backend_error_text.dart';
 
 import '../models/admin_system_settings_model.dart';
 
@@ -24,7 +25,7 @@ class AdminSettingsRepository {
 
       final plainMsg = error['message']?.toString();
       if (plainMsg != null && plainMsg.trim().isNotEmpty) {
-        return plainMsg;
+        return humanizeBackendErrorText(plainMsg);
       }
     }
 
@@ -39,7 +40,7 @@ class AdminSettingsRepository {
 
     final plain = message?.toString();
     if (plain != null && plain.trim().isNotEmpty) {
-      return plain;
+      return humanizeBackendErrorText(plain);
     }
 
     return 'Request failed';
@@ -80,7 +81,7 @@ class AdminSettingsRepository {
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -123,7 +124,7 @@ class AdminSettingsRepository {
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }

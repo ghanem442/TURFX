@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:football/core/network/api_client.dart';
+import 'package:football/core/network/backend_error_text.dart';
 
 import '../models/admin_platform_wallet_model.dart';
 
@@ -26,12 +27,12 @@ class AdminPlatformWalletRepository {
 
         final plainMsg = error['message']?.toString().trim();
         if (plainMsg != null && plainMsg.isNotEmpty) {
-          return plainMsg;
+          return humanizeBackendErrorText(plainMsg);
         }
 
         final code = error['code']?.toString().trim();
         if (code != null && code.isNotEmpty) {
-          return code;
+          return humanizeBackendErrorText(code);
         }
       }
 
@@ -52,12 +53,12 @@ class AdminPlatformWalletRepository {
 
       final plain = body['message']?.toString().trim();
       if (plain != null && plain.isNotEmpty) {
-        return plain;
+        return humanizeBackendErrorText(plain);
       }
     }
 
     if (raw is String && raw.trim().isNotEmpty) {
-      return raw.trim();
+      return humanizeBackendErrorText(raw.trim());
     }
 
     return 'Request failed';
@@ -124,7 +125,11 @@ class AdminPlatformWalletRepository {
 
       return AdminPlatformWalletModel.fromJson(Map<String, dynamic>.from(data));
     } on DioException catch (e) {
-      throw Exception(_extractErrorMessage(e.response?.data));
+      final raw = e.response?.data;
+      if (raw is Map) {
+        throw Exception(_extractErrorMessage(raw));
+      }
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -161,7 +166,11 @@ class AdminPlatformWalletRepository {
         Map<String, dynamic>.from(data),
       );
     } on DioException catch (e) {
-      throw Exception(_extractErrorMessage(e.response?.data));
+      final raw = e.response?.data;
+      if (raw is Map) {
+        throw Exception(_extractErrorMessage(raw));
+      }
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -252,7 +261,11 @@ class AdminPlatformWalletRepository {
         pagination: pagination,
       );
     } on DioException catch (e) {
-      throw Exception(_extractErrorMessage(e.response?.data));
+      final raw = e.response?.data;
+      if (raw is Map) {
+        throw Exception(_extractErrorMessage(raw));
+      }
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -329,7 +342,11 @@ class AdminPlatformWalletRepository {
         Map<String, dynamic>.from(data),
       );
     } on DioException catch (e) {
-      throw Exception(_extractErrorMessage(e.response?.data));
+      final raw = e.response?.data;
+      if (raw is Map) {
+        throw Exception(_extractErrorMessage(raw));
+      }
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:football/core/network/api_client.dart';
+import 'package:football/core/network/backend_error_text.dart';
 
 import '../models/admin_user_model.dart';
 
@@ -23,10 +24,14 @@ class AdminUsersRepository {
       }
 
       final plain = error['message']?.toString();
-      if (plain != null && plain.trim().isNotEmpty) return plain.trim();
+      if (plain != null && plain.trim().isNotEmpty) {
+        return humanizeBackendErrorText(plain.trim());
+      }
 
       final code = error['code']?.toString();
-      if (code != null && code.trim().isNotEmpty) return code.trim();
+      if (code != null && code.trim().isNotEmpty) {
+        return humanizeBackendErrorText(code.trim());
+      }
     }
 
     final message = body['message'];
@@ -39,7 +44,9 @@ class AdminUsersRepository {
     }
 
     final plain = message?.toString();
-    if (plain != null && plain.trim().isNotEmpty) return plain.trim();
+    if (plain != null && plain.trim().isNotEmpty) {
+      return humanizeBackendErrorText(plain.trim());
+    }
 
     return 'Failed to load users';
   }
@@ -98,7 +105,7 @@ class AdminUsersRepository {
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -127,7 +134,7 @@ class AdminUsersRepository {
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     }
   }
 
@@ -152,7 +159,7 @@ class AdminUsersRepository {
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     }
   }
 }

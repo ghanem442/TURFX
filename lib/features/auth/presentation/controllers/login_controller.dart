@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/auth_providers.dart';
 import 'package:football/features/auth/presentation/providers/auth_session_provider.dart';
+import 'package:football/core/notifications/push_token_sync_service.dart';
 
 class LoginController extends AsyncNotifier<void> {
   @override
@@ -18,13 +19,11 @@ class LoginController extends AsyncNotifier<void> {
 
       final res = await repo.login(email: email, password: password);
 
-      // ✅ res.data لازم تكون Map
       final dynamic rawData = res.data;
       if (rawData is! Map<String, dynamic>) {
         throw Exception("Invalid login response: data is not a map");
       }
 
-      // ✅ حسب كلامك: data.tokens.accessToken / refreshToken
       final tokensNode = rawData["tokens"];
       if (tokensNode is! Map) {
         throw Exception("Invalid login response: tokens missing");
@@ -42,11 +41,15 @@ class LoginController extends AsyncNotifier<void> {
         throw Exception("Login failed: refreshToken missing");
       }
 
-      // ✅ الصح: خزّن + حدّث providers + غيّر AuthStatus
       await ref.read(authSessionProvider.notifier).saveTokens(
             accessToken: accessToken,
             refreshToken: refreshToken,
           );
+
+      ref.read(authSessionProvider.notifier).setUserFromAuthResponse(rawData);
+
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await ref.read(pushTokenSyncServiceProvider).syncNow();
     });
   }
 }

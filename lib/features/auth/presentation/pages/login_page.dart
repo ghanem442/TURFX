@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/app_gradient_button.dart';
+import '../../../../core/notifications/push_token_sync_service.dart';
+import '../../../../core/network/api_client.dart'; // ✅ مهم
+
 import '../../data/auth_repository_provider.dart';
 import '../providers/auth_session_provider.dart';
 
@@ -79,8 +82,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       final data = res.data;
       final tokens = _extractTokensMap(data);
 
-      final accessToken = (tokens['accessToken'] ?? '').toString().trim();
-      final refreshToken = (tokens['refreshToken'] ?? '').toString().trim();
+      final accessToken =
+          (tokens['accessToken'] ?? '').toString().trim();
+      final refreshToken =
+          (tokens['refreshToken'] ?? '').toString().trim();
 
       if (accessToken.isEmpty || refreshToken.isEmpty) {
         if (!mounted) return;
@@ -90,12 +95,21 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         return;
       }
 
+      // ✅🔥 أهم إضافة
+      ApiClient.setToken(accessToken);
+
       final session = ref.read(authSessionProvider.notifier);
       await session.saveTokens(
         accessToken: accessToken,
         refreshToken: refreshToken,
       );
+
       session.setUserFromAuthResponse(data);
+
+      await Future.delayed(const Duration(milliseconds: 300));
+      debugPrint('🔥 LOGIN PAGE - TRYING FCM REGISTER');
+
+      await ref.read(pushTokenSyncServiceProvider).syncNow();
 
       final verified = ref.read(authIsVerifiedProvider);
       final role = ref.read(authUserProvider)?.role;
@@ -172,7 +186,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               ),
             ),
             const SizedBox(height: 26),
-
             _Label("Email", isDark: isDark),
             const SizedBox(height: 8),
             TextField(
@@ -183,7 +196,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 prefixIcon: Icon(Icons.email_outlined),
               ),
             ),
-
             const SizedBox(height: 16),
             _Label("Password", isDark: isDark),
             const SizedBox(height: 8),
@@ -203,7 +215,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 ),
               ),
             ),
-
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerRight,
@@ -218,13 +229,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 ),
               ),
             ),
-
             const SizedBox(height: 18),
             AppGradientButton(
               text: _loading ? "Signing in..." : "Log In",
               onPressed: _loading ? null : _onLogin,
             ),
-
             const SizedBox(height: 18),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,

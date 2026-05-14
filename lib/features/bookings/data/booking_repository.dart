@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:football/core/network/api_client.dart';
+import 'package:football/features/bookings/data/bookings_api.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'models/booking_model.dart';
 import 'models/bookings_list_result_model.dart';
@@ -184,7 +188,9 @@ class BookingsRepository {
       return BookingModel.fromJson(data);
     } on DioException catch (e) {
       if (kDebugMode) {
-        debugPrint('[BOOKING_BY_ID] DioException status=${e.response?.statusCode}');
+        debugPrint(
+          '[BOOKING_BY_ID] DioException status=${e.response?.statusCode}',
+        );
         debugPrint('[BOOKING_BY_ID] DioException data=${e.response?.data}');
       }
 
@@ -255,29 +261,177 @@ class BookingsRepository {
     }
   }
 
+  Future<ManualPaymentInfoModel> getManualPaymentInfo({
+    required String gateway,
+  }) async {
+    final resolvedGateway = gateway.trim();
+    final gatewayKey = resolvedGateway.toUpperCase();
+
+    if (kDebugMode) {
+      debugPrint('[MANUAL_PAYMENT_INFO] ========== START ==========');
+      debugPrint('[MANUAL_PAYMENT_INFO] Gateway: $resolvedGateway');
+      debugPrint('[MANUAL_PAYMENT_INFO] Gateway Key: $gatewayKey');
+    }
+
+    // Try to load from Firestore first (admin settings) - Skip on Web for now
+    if (!kIsWeb) {
+      try {
+        final firestore = FirebaseFirestore.instance;
+        
+        if (kDebugMode) {
+          debugPrint('[MANUAL_PAYMENT_INFO] Attempting Firestore read...');
+        }
+        
+        final doc = await firestore
+            .collection('payment_accounts')
+            .doc(gatewayKey)
+            .get();
+        
+        if (kDebugMode) {
+          debugPrint('[MANUAL_PAYMENT_INFO] Doc exists: ${doc.exists}');
+        }
+        
+        if (doc.exists) {
+          final accountData = doc.data();
+          
+          if (kDebugMode) {
+            debugPrint('[MANUAL_PAYMENT_INFO] Account data: $accountData');
+          }
+          
+          if (accountData != null) {
+            final isEnabled = accountData['isEnabled'] == true;
+            final mobileNumber = (accountData['mobileNumber'] ?? '').toString().trim();
+            final accountName = (accountData['accountName'] ?? '').toString().trim();
+            
+            if (kDebugMode) {
+              debugPrint('[MANUAL_PAYMENT_INFO] isEnabled: $isEnabled');
+              debugPrint('[MANUAL_PAYMENT_INFO] mobileNumber: $mobileNumber');
+              debugPrint('[MANUAL_PAYMENT_INFO] accountName: $accountName');
+            }
+            
+            if (isEnabled && mobileNumber.isNotEmpty) {
+              if (kDebugMode) {
+                debugPrint('[MANUAL_PAYMENT_INFO] ✅ Returning Firestore data');
+              }
+              
+              // Return Firestore admin settings
+              return ManualPaymentInfoModel(
+                gateway: resolvedGateway,
+                isAvailable: true,
+                instructions: {
+                  'ar': (accountData['instructionsAr'] ?? 'قم بتحويل المبلغ المطلوب').toString(),
+                  'en': (accountData['instructionsEn'] ?? 'Transfer the required amount').toString(),
+                },
+                accountDetails: {
+                  'mobileNumber': mobileNumber,
+                  'accountName': accountName,
+                },
+              );
+            } else {
+              if (kDebugMode) {
+                debugPrint('[MANUAL_PAYMENT_INFO] ⚠️ Account disabled or no mobile number');
+              }
+            }
+          }
+        }
+        
+        if (kDebugMode) {
+          debugPrint('[MANUAL_PAYMENT_INFO] No valid Firestore data, trying API');
+        }
+      } catch (e, stackTrace) {
+        if (kDebugMode) {
+          debugPrint('[MANUAL_PAYMENT_INFO] ❌ Firestore error: $e');
+          debugPrint('[MANUAL_PAYMENT_INFO] Stack trace: $stackTrace');
+        }
+        // Continue to API call
+      }
+    } else {
+      if (kDebugMode) {
+        debugPrint('[MANUAL_PAYMENT_INFO] Skipping Firestore on Web, using API');
+      }
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        '[MANUAL_PAYMENT_INFO] GET /payments/manual-payment-info/$resolvedGateway',
+      );
+    }
+
+    try {
+      final res = await api.dio.get(
+        'payments/manual-payment-info/$resolvedGateway',
+      );
+
+      if (kDebugMode) {
+        debugPrint('[MANUAL_PAYMENT_INFO] status=${res.statusCode}');
+        debugPrint('[MANUAL_PAYMENT_INFO] response=${res.data}');
+      }
+
+      final root = _asMap(res.data);
+      if (root == null) {
+        throw Exception('Invalid manual payment info response');
+      }
+
+      if (root['success'] == false) {
+        throw Exception(_extractErrorMessage(root));
+      }
+
+      final rawData = root['data'];
+      if (rawData is! Map) {
+        throw Exception('Invalid manual payment info response');
+      }
+
+      return ManualPaymentInfoModel.fromJson(
+        Map<String, dynamic>.from(rawData),
+      );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          '[MANUAL_PAYMENT_INFO] DioException status=${e.response?.statusCode}',
+        );
+        debugPrint('[MANUAL_PAYMENT_INFO] DioException data=${e.response?.data}');
+      }
+
+      throw Exception(
+        _extractDioMessage(
+          e,
+          fallback: 'Failed to load payment account details',
+        ),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[MANUAL_PAYMENT_INFO] unexpected error=$e');
+      }
+      rethrow;
+    }
+  }
+
   Future<PaymentResultModel> initiateDepositPayment({
     required String bookingId,
+    required String gateway,
   }) async {
     final resolvedBookingId = bookingId.trim();
+    final resolvedGateway = gateway.trim();
 
     final payload = <String, dynamic>{
       'bookingId': resolvedBookingId,
+      'gateway': resolvedGateway,
     };
 
     if (kDebugMode) {
-      debugPrint('[PAYMENT] POST /payments/deposit/init');
-      debugPrint('[PAYMENT] request payload=$payload');
+      debugPrint('[PAYMENT_INITIATE] POST /payments/initiate');
+      debugPrint('[PAYMENT_INITIATE] request payload=$payload');
     }
 
     try {
       final res = await api.dio.post(
-        'payments/deposit/init',
+        'payments/initiate',
         data: payload,
       );
 
       if (kDebugMode) {
-        debugPrint('[PAYMENT] status=${res.statusCode}');
-        debugPrint('[PAYMENT] response=${res.data}');
+        debugPrint('[PAYMENT_INITIATE] status=${res.statusCode}');
+        debugPrint('[PAYMENT_INITIATE] response=${res.data}');
       }
 
       return PaymentResultModel.fromAny(res.data);
@@ -286,9 +440,9 @@ class BookingsRepository {
       final data = e.response?.data;
 
       if (kDebugMode) {
-        debugPrint('[PAYMENT] DioException status=$statusCode');
-        debugPrint('[PAYMENT] DioException data=$data');
-        debugPrint('[PAYMENT] DioException message=${e.message}');
+        debugPrint('[PAYMENT_INITIATE] DioException status=$statusCode');
+        debugPrint('[PAYMENT_INITIATE] DioException data=$data');
+        debugPrint('[PAYMENT_INITIATE] DioException message=${e.message}');
       }
 
       if (data is Map) {
@@ -331,7 +485,7 @@ class BookingsRepository {
       );
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('[PAYMENT] unexpected error=$e');
+        debugPrint('[PAYMENT_INITIATE] unexpected error=$e');
       }
 
       return PaymentResultModel(
@@ -353,8 +507,153 @@ class BookingsRepository {
 
   Future<PaymentResultModel> initiateWalletPayment({
     required String bookingId,
+    required String gateway,
   }) {
-    return initiateDepositPayment(bookingId: bookingId.trim());
+    return initiateDepositPayment(
+      bookingId: bookingId.trim(),
+      gateway: gateway.trim(),
+    );
+  }
+
+  Future<PaymentUploadResultModel> uploadPaymentScreenshot({
+    required String paymentId,
+    required File screenshotFile,
+    String? notes,
+    String? transactionId,
+    String? senderNumber,
+  }) async {
+    final resolvedPaymentId = paymentId.trim();
+
+    if (kDebugMode) {
+      debugPrint(
+        '[UPLOAD_SCREENSHOT] POST /payments/$resolvedPaymentId/upload-screenshot',
+      );
+      debugPrint('[UPLOAD_SCREENSHOT] file=${screenshotFile.path}');
+      debugPrint('[UPLOAD_SCREENSHOT] notes=$notes');
+      debugPrint('[UPLOAD_SCREENSHOT] transactionId=$transactionId');
+      debugPrint('[UPLOAD_SCREENSHOT] senderNumber=$senderNumber');
+    }
+
+    try {
+      final formData = FormData.fromMap({
+        'screenshot': await MultipartFile.fromFile(
+          screenshotFile.path,
+          filename: screenshotFile.uri.pathSegments.isNotEmpty
+              ? screenshotFile.uri.pathSegments.last
+              : 'payment_screenshot',
+        ),
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        if (transactionId != null && transactionId.trim().isNotEmpty)
+          'transactionId': transactionId.trim(),
+        if (senderNumber != null && senderNumber.trim().isNotEmpty)
+          'senderNumber': senderNumber.trim(),
+      });
+
+      final res = await api.dio.post(
+        'payments/$resolvedPaymentId/upload-screenshot',
+        data: formData,
+      );
+
+      if (kDebugMode) {
+        debugPrint('[UPLOAD_SCREENSHOT] status=${res.statusCode}');
+        debugPrint('[UPLOAD_SCREENSHOT] response=${res.data}');
+      }
+
+      final root = _asMap(res.data);
+      if (root == null) {
+        throw Exception('Invalid screenshot upload response');
+      }
+
+      if (root['success'] == false) {
+        throw Exception(_extractErrorMessage(root));
+      }
+
+      final rawData = root['data'];
+      if (rawData is! Map) {
+        throw Exception('Invalid screenshot upload response');
+      }
+
+      return PaymentUploadResultModel.fromJson(
+        Map<String, dynamic>.from(rawData),
+      );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          '[UPLOAD_SCREENSHOT] DioException status=${e.response?.statusCode}',
+        );
+        debugPrint('[UPLOAD_SCREENSHOT] DioException data=${e.response?.data}');
+      }
+
+      throw Exception(
+        _extractDioMessage(
+          e,
+          fallback: 'Failed to upload payment screenshot',
+        ),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[UPLOAD_SCREENSHOT] unexpected error=$e');
+      }
+      rethrow;
+    }
+  }
+
+  Future<PaymentVerificationStatusModel> getVerificationStatus({
+    required String paymentId,
+  }) async {
+    final resolvedPaymentId = paymentId.trim();
+
+    if (kDebugMode) {
+      debugPrint(
+        '[PAYMENT_STATUS] GET /payments/$resolvedPaymentId/verification-status',
+      );
+    }
+
+    try {
+      final res = await api.dio.get(
+        'payments/$resolvedPaymentId/verification-status',
+      );
+
+      if (kDebugMode) {
+        debugPrint('[PAYMENT_STATUS] status=${res.statusCode}');
+        debugPrint('[PAYMENT_STATUS] response=${res.data}');
+      }
+
+      final root = _asMap(res.data);
+      if (root == null) {
+        throw Exception('Invalid payment status response');
+      }
+
+      if (root['success'] == false) {
+        throw Exception(_extractErrorMessage(root));
+      }
+
+      final rawData = root['data'];
+      if (rawData is! Map) {
+        throw Exception('Invalid payment status response');
+      }
+
+      return PaymentVerificationStatusModel.fromJson(
+        Map<String, dynamic>.from(rawData),
+      );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PAYMENT_STATUS] DioException status=${e.response?.statusCode}');
+        debugPrint('[PAYMENT_STATUS] DioException data=${e.response?.data}');
+      }
+
+      throw Exception(
+        _extractDioMessage(
+          e,
+          fallback: 'Failed to load payment verification status',
+        ),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PAYMENT_STATUS] unexpected error=$e');
+      }
+      rethrow;
+    }
   }
 
   Future<CancelBookingResultModel> cancelBooking({

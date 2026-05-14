@@ -1,36 +1,63 @@
 import 'dart:async';
+import 'dart:io';
 
-import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:football/core/theme/app_theme.dart';
+import 'package:football/features/bookings/data/bookings_api.dart';
 import 'package:football/features/fields/data/models/field_model.dart';
 import 'package:football/features/wallet/presentation/providers/wallet_providers.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/models/booking_model.dart';
 import '../../data/models/payment_result_model.dart';
 import '../providers/booking_providers.dart';
+import '../providers/payment_local_store_provider.dart';
 
 class BookingConfirmationArgs {
   final BookingModel booking;
   final FieldModel? field;
 
-  const BookingConfirmationArgs({
-    required this.booking,
-    this.field,
-  });
+  const BookingConfirmationArgs({required this.booking, this.field});
+}
+
+enum ManualPaymentGateway { vodafoneCash, instapay }
+
+extension ManualPaymentGatewayX on ManualPaymentGateway {
+  String get apiValue {
+    switch (this) {
+      case ManualPaymentGateway.vodafoneCash:
+        return 'vodafone_cash';
+      case ManualPaymentGateway.instapay:
+        return 'instapay';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case ManualPaymentGateway.vodafoneCash:
+        return 'Vodafone Cash';
+      case ManualPaymentGateway.instapay:
+        return 'InstaPay';
+    }
+  }
+
+  String get labelAr {
+    switch (this) {
+      case ManualPaymentGateway.vodafoneCash:
+        return 'فودافون كاش';
+      case ManualPaymentGateway.instapay:
+        return 'إنستا باي';
+    }
+  }
 }
 
 class BookingConfirmationPage extends ConsumerStatefulWidget {
   final BookingConfirmationArgs? args;
 
-  const BookingConfirmationPage({
-    super.key,
-    required this.args,
-  });
+  const BookingConfirmationPage({super.key, required this.args});
 
   @override
   ConsumerState<BookingConfirmationPage> createState() =>
@@ -46,7 +73,19 @@ class _BookingConfirmationPageState
   bool _paying = false;
   bool _cancelling = false;
   bool _refreshingAfterPayment = false;
-  bool _awaitingPaymentReturn = false;
+  bool _uploadingScreenshot = false;
+  bool _refreshingVerificationStatus = false;
+  bool _restoringStoredPayment = false;
+
+  ManualPaymentGateway? _selectedGateway = ManualPaymentGateway.vodafoneCash;
+  PaymentResultModel? _paymentResult;
+  PaymentVerificationStatusModel? _verificationStatus;
+  File? _selectedScreenshotFile;
+
+  final TextEditingController _notesController = TextEditingController();
+  final TextEditingController _transactionIdController =
+      TextEditingController();
+  final TextEditingController _senderNumberController = TextEditingController();
 
   static const _allBookingsQueries = [
     MyBookingsQuery(page: 1, limit: 20),
@@ -56,10 +95,12 @@ class _BookingConfirmationPageState
     MyBookingsQuery(category: 'expired', page: 1, limit: 20),
     MyBookingsQuery(status: 'CONFIRMED', page: 1, limit: 20),
     MyBookingsQuery(status: 'PENDING_PAYMENT', page: 1, limit: 20),
+    MyBookingsQuery(status: 'CHECKED_IN', page: 1, limit: 20),
     MyBookingsQuery(status: 'CANCELLED_REFUNDED', page: 1, limit: 20),
     MyBookingsQuery(status: 'CANCELLED_NO_REFUND', page: 1, limit: 20),
     MyBookingsQuery(status: 'PLAYED', page: 1, limit: 20),
     MyBookingsQuery(status: 'EXPIRED_NO_SHOW', page: 1, limit: 20),
+    MyBookingsQuery(status: 'PAYMENT_FAILED', page: 1, limit: 20),
   ];
 
   @override
@@ -67,26 +108,45 @@ class _BookingConfirmationPageState
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startCountdown();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _restoreStoredPaymentState();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant BookingConfirmationPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.args?.booking.id != widget.args?.booking.id ||
+        oldWidget.args?.booking.paymentDeadline !=
+            widget.args?.booking.paymentDeadline) {
+      _startCountdown();
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _notesController.dispose();
+    _transactionIdController.dispose();
+    _senderNumberController.dispose();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _awaitingPaymentReturn) {
-      _awaitingPaymentReturn = false;
-      unawaited(_refreshAfterPaymentReturn());
-    }
-  }
+  String? get _bookingId => widget.args?.booking.id;
 
   void _startCountdown() {
     final deadline = widget.args?.booking.paymentDeadline;
-    if (deadline == null) return;
+    _timer?.cancel();
+
+    if (deadline == null) {
+      if (mounted) {
+        setState(() => _remaining = null);
+      }
+      return;
+    }
 
     void tick() {
       final diff = deadline.difference(DateTime.now());
@@ -97,33 +157,77 @@ class _BookingConfirmationPageState
     }
 
     tick();
-    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+  }
+
+  Future<void> _savePaymentIdLocally({
+    required String bookingId,
+    required String paymentId,
+  }) async {
+    final store = ref.read(paymentLocalStoreProvider);
+    await store.savePaymentId(bookingId: bookingId, paymentId: paymentId);
+  }
+
+  Future<String?> _readStoredPaymentId(String bookingId) async {
+    final store = ref.read(paymentLocalStoreProvider);
+    return store.getPaymentId(bookingId: bookingId);
+  }
+
+  Future<void> _clearStoredPaymentId(String bookingId) async {
+    final store = ref.read(paymentLocalStoreProvider);
+    await store.clearPaymentId(bookingId: bookingId);
+  }
+
+  Future<void> _restoreStoredPaymentState() async {
+    final bookingId = _bookingId;
+    if (bookingId == null || bookingId.trim().isEmpty) return;
+    if (_restoringStoredPayment) return;
+
+    setState(() => _restoringStoredPayment = true);
+
+    try {
+      final paymentId = await _readStoredPaymentId(bookingId);
+
+      if (!mounted || paymentId == null || paymentId.trim().isEmpty) {
+        return;
+      }
+
+      setState(() {
+        _paymentResult = PaymentResultModel(
+          success: true,
+          data: PaymentDataModel(
+            paymentId: paymentId,
+            bookingId: bookingId,
+            amount: '',
+            currency: '',
+            gateway: '',
+            paymentType: '',
+            referenceCode: '',
+            paymentExpiresAt: null,
+            expiryMinutes: 0,
+            instructions: const {},
+            accountDetails: const {},
+            nextStep: const {},
+          ),
+          error: null,
+          message: null,
+          status: null,
+          raw: const {},
+        );
+      });
+
+      await _refreshVerificationStatus(silent: true);
+    } finally {
+      if (mounted) {
+        setState(() => _restoringStoredPayment = false);
+      }
+    }
   }
 
   void _invalidateAllBookings() {
     for (final query in _allBookingsQueries) {
       ref.invalidate(myBookingsProvider(query));
     }
-  }
-
-  Map<String, dynamic>? _rootFromDio(Object e) {
-    if (e is! DioException) return null;
-    final data = e.response?.data;
-    if (data is Map) {
-      return Map<String, dynamic>.from(data);
-    }
-    return null;
-  }
-
-  String? _errorCode(Object e) {
-    final root = _rootFromDio(e);
-    if (root == null) return null;
-
-    final err = root['error'];
-    if (err is! Map) return null;
-
-    return err['code']?.toString();
   }
 
   String _errorMessageAr(Object e) {
@@ -133,127 +237,214 @@ class _BookingConfirmationPageState
       return e.userMessageAr;
     }
 
-    final root = _rootFromDio(e);
-    if (root == null) {
-      final text = e.toString().replaceFirst('Exception: ', '').trim();
-      return text.isEmpty ? fallback : text;
-    }
+    final text = e.toString().replaceFirst('Exception: ', '').trim();
+    return text.isEmpty ? fallback : text;
+  }
 
-    final err = root['error'];
-    if (err is Map) {
-      final msg = err['message'];
+  Future<void> _pickScreenshotFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowMultiple: false,
+        allowedExtensions: const ['jpg', 'jpeg', 'png', 'pdf'],
+      );
 
-      if (msg is Map) {
-        final msgMap = Map<String, dynamic>.from(msg);
+      if (!mounted) return;
 
-        final ar = msgMap['ar']?.toString();
-        if (ar != null && ar.trim().isNotEmpty) return ar.trim();
-
-        final en = msgMap['en']?.toString();
-        if (en != null && en.trim().isNotEmpty) return en.trim();
+      if (result == null || result.files.isEmpty) {
+        return;
       }
 
-      if (msg is String && msg.trim().isNotEmpty) {
-        return msg.trim();
+      final picked = result.files.single;
+      final path = picked.path;
+
+      if (path == null || path.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر قراءة الملف المختار')),
+        );
+        return;
       }
 
-      final code = err['code']?.toString();
-      if (code != null && code.trim().isNotEmpty) return code.trim();
+      setState(() {
+        _selectedScreenshotFile = File(path);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_errorMessageAr(e))));
     }
-
-    final rootMessage = root['message']?.toString();
-    if (rootMessage != null && rootMessage.trim().isNotEmpty) {
-      return rootMessage.trim();
-    }
-
-    return fallback;
   }
 
-  bool _isEmailNotVerifiedError(Object e) {
-    if (e is PaymentResultModel) {
-      return e.errorCode == 'EMAIL_NOT_VERIFIED';
+  Future<void> _startManualPayment(BookingModel booking) async {
+    if (_paying) return;
+
+    final gateway = _selectedGateway;
+    if (gateway == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('اختر وسيلة الدفع أولًا')));
+      return;
     }
-    return _errorCode(e) == 'EMAIL_NOT_VERIFIED';
-  }
 
-  Future<void> _showEmailNotVerifiedDialog(Object e) async {
-    final messageAr = _errorMessageAr(e);
+    setState(() => _paying = true);
 
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('تأكيد البريد الإلكتروني'),
-        content: Text(messageAr),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('حسنًا'),
+    try {
+      final result = await ref.read(
+        initiateDepositPaymentProvider(
+          ManualPaymentInitParams(
+            bookingId: booking.id,
+            gateway: gateway.apiValue,
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'الحساب غير مُفعّل. افتح شاشة Verify Email / Resend وأعد إرسال التفعيل.',
-                  ),
-                ),
-              );
-            },
-            child: const Text('تمام'),
+        ).future,
+      );
+
+      if (!mounted) return;
+
+      if (!result.isSuccess || result.data == null) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(result.userMessageAr)));
+        return;
+      }
+
+      setState(() {
+        _paymentResult = result;
+        _verificationStatus = null;
+        _selectedScreenshotFile = null;
+        _notesController.clear();
+        _transactionIdController.clear();
+        _senderNumberController.clear();
+      });
+
+      await _savePaymentIdLocally(
+        bookingId: booking.id,
+        paymentId: result.paymentId,
+      );
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'تم إنشاء طلب الدفع. حوّل المبلغ ثم ارفع لقطة الشاشة',
+            ),
           ),
-        ],
-      ),
-    );
+        );
+    } catch (e) {
+      if (!mounted) return;
+      final msg = _errorMessageAr(e);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(msg)));
+    } finally {
+      if (mounted) {
+        setState(() => _paying = false);
+      }
+    }
   }
 
-  Future<bool> _handleNotVerifiedIfNeeded(Object e) async {
-    if (!_isEmailNotVerifiedError(e)) return false;
-    if (!mounted) return true;
-    await _showEmailNotVerifiedDialog(e);
-    return true;
-  }
-
-  String _extractRedirectUrl(PaymentResultModel result) {
-    if (result.redirectUrl.trim().isNotEmpty) {
-      return result.redirectUrl.trim();
+  Future<void> _uploadScreenshot() async {
+    final payment = _paymentResult;
+    if (payment == null || payment.paymentId.trim().isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('ابدأ عملية الدفع أولًا')));
+      return;
     }
 
-    final raw = result.raw;
-    if (raw == null) return '';
-
-    final direct = raw['redirectUrl']?.toString().trim();
-    if (direct != null && direct.isNotEmpty) return direct;
-
-    final data = raw['data'];
-    if (data is Map) {
-      final nested = Map<String, dynamic>.from(data);
-      final nestedUrl = nested['redirectUrl']?.toString().trim();
-      if (nestedUrl != null && nestedUrl.isNotEmpty) return nestedUrl;
+    if (_selectedScreenshotFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اختر لقطة شاشة أو PDF أولًا')),
+      );
+      return;
     }
 
-    return '';
-  }
+    if (_uploadingScreenshot) return;
 
-  LaunchMode _launchModeForPayment() {
-    return kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication;
-  }
+    setState(() => _uploadingScreenshot = true);
 
-  Future<bool> _openPaymentUrl(Uri uri) async {
-    if (kDebugMode) {
-      debugPrint('[PAY_INIT] opening uri=$uri');
-      debugPrint('[PAY_INIT] launchMode=${_launchModeForPayment()}');
+    try {
+      final result = await ref.read(
+        uploadPaymentScreenshotProvider(
+          UploadPaymentScreenshotParams(
+            paymentId: payment.paymentId,
+            screenshotFile: _selectedScreenshotFile!,
+            notes: _notesController.text.trim().isEmpty
+                ? null
+                : _notesController.text.trim(),
+            transactionId: _transactionIdController.text.trim().isEmpty
+                ? null
+                : _transactionIdController.text.trim(),
+            senderNumber: _senderNumberController.text.trim().isEmpty
+                ? null
+                : _senderNumberController.text.trim(),
+          ),
+        ).future,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              result.messageAr.trim().isNotEmpty
+                  ? result.messageAr
+                  : 'تم رفع لقطة الشاشة بنجاح',
+            ),
+          ),
+        );
+
+      await _refreshVerificationStatus();
+    } catch (e) {
+      if (!mounted) return;
+      final msg = _errorMessageAr(e);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(msg)));
+    } finally {
+      if (mounted) {
+        setState(() => _uploadingScreenshot = false);
+      }
     }
-
-    return launchUrl(
-      uri,
-      mode: _launchModeForPayment(),
-      webOnlyWindowName: '_self',
-    );
   }
 
-  Future<void> _refreshAfterPaymentReturn() async {
+  Future<void> _refreshVerificationStatus({bool silent = false}) async {
+    final payment = _paymentResult;
+    if (payment == null || payment.paymentId.trim().isNotEmpty == false) return;
+    if (_refreshingVerificationStatus) return;
+
+    setState(() => _refreshingVerificationStatus = true);
+
+    try {
+      ref.invalidate(paymentVerificationStatusProvider(payment.paymentId));
+
+      final status = await ref.read(
+        paymentVerificationStatusProvider(payment.paymentId).future,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _verificationStatus = status;
+      });
+
+      await _refreshBookingAfterPaymentStatus(silent: silent);
+    } catch (e) {
+      if (!mounted || silent) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_errorMessageAr(e))));
+    } finally {
+      if (mounted) {
+        setState(() => _refreshingVerificationStatus = false);
+      }
+    }
+  }
+
+  Future<void> _refreshBookingAfterPaymentStatus({bool silent = false}) async {
     if (_refreshingAfterPayment || !mounted || widget.args == null) return;
 
     setState(() => _refreshingAfterPayment = true);
@@ -261,151 +452,96 @@ class _BookingConfirmationPageState
     try {
       final bookingId = widget.args!.booking.id;
 
-      BookingModel? updated;
+      ref.invalidate(bookingByIdProvider(bookingId));
+      ref.invalidate(bookingQrProvider(bookingId));
+      _invalidateAllBookings();
 
-      for (int i = 0; i < 3; i++) {
-        ref.invalidate(bookingByIdProvider(bookingId));
-        ref.invalidate(bookingQrProvider(bookingId));
-        _invalidateAllBookings();
+      final updated = await ref.refresh(bookingByIdProvider(bookingId).future);
 
-        updated = await ref.refresh(bookingByIdProvider(bookingId).future);
+      if (!mounted) return;
 
-        final status = updated?.status.toUpperCase() ?? '';
-if (status == 'CONFIRMED' || status == 'PLAYED') {
-  break;
-}
+      final bookingStatus = updated.statusUpper;
+      final verificationStatus =
+          _verificationStatus?.verificationStatus.toUpperCase() ?? '';
 
-        await Future.delayed(const Duration(seconds: 2));
+      final shouldClearStoredPayment =
+          bookingStatus == 'CONFIRMED' ||
+          bookingStatus == 'PAYMENT_FAILED' ||
+          verificationStatus == 'APPROVED' ||
+          verificationStatus == 'REJECTED' ||
+          verificationStatus == 'EXPIRED';
+
+      if (shouldClearStoredPayment) {
+        await _clearStoredPaymentId(bookingId);
+
+        if (mounted &&
+            (verificationStatus == 'REJECTED' ||
+                verificationStatus == 'EXPIRED' ||
+                bookingStatus == 'PAYMENT_FAILED')) {
+          _resetLocalPaymentDraftUi();
+        }
       }
 
-      if (!mounted || updated == null) return;
-
-      final status = updated.status.toUpperCase();
-
-      if (status == 'CONFIRMED' || status == 'PLAYED') {
+      if (bookingStatus == 'CONFIRMED') {
         await ref.read(walletProvider.notifier).refreshWallet();
 
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم تأكيد الحجز بعد الدفع بنجاح'),
-          ),
-        );
-      } else if (status == 'PENDING_PAYMENT') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'الدفع لم يتأكد بعد. لو دفعت بالفعل انتظر ثواني ثم حدّث الحالة.',
-            ),
-          ),
-        );
-      } else if (status == 'PAYMENT_FAILED') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('فشل الدفع أو لم يكتمل'),
-          ),
-        );
-      }
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تعذر تحديث حالة الحجز بعد الرجوع من صفحة الدفع'),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _refreshingAfterPayment = false);
-      }
-    }
-  }
-
-  Future<void> _startOnlinePayment(BookingModel booking) async {
-    if (_paying) return;
-
-    setState(() => _paying = true);
-
-    try {
-      final result = await ref.read(
-        initiateDepositPaymentProvider(booking.id).future,
-      );
-
-      if (!mounted) return;
-
-      if (!result.isSuccess) {
+        if (!mounted || silent) return;
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            SnackBar(content: Text(result.userMessageAr)),
+            const SnackBar(content: Text('تم قبول الدفع وتأكيد الحجز بنجاح')),
           );
-        return;
-      }
-
-      final redirectUrl = _extractRedirectUrl(result);
-
-      if (redirectUrl.isEmpty) {
+      } else if (verificationStatus == 'PENDING' ||
+          verificationStatus == 'LOCKED') {
+        if (silent) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('تم رفع الإثبات والحالة الآن قيد المراجعة'),
+            ),
+          );
+      } else if (verificationStatus == 'REJECTED') {
+        if (silent) return;
+        final reason = _verificationStatus?.rejectionReason?.trim() ?? '';
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
             SnackBar(
               content: Text(
-                result.userMessageAr.trim().isNotEmpty
-                    ? result.userMessageAr
-                    : 'لم يتم استلام رابط الدفع من الخادم',
+                reason.isNotEmpty
+                    ? 'تم رفض الدفع: $reason'
+                    : 'تم رفض إثبات الدفع لهذه العملية',
               ),
             ),
           );
-        return;
-      }
-
-      final uri = Uri.tryParse(redirectUrl);
-      if (uri == null) {
+      } else if (verificationStatus == 'EXPIRED') {
+        if (silent) return;
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            const SnackBar(content: Text('رابط الدفع غير صالح')),
+            const SnackBar(content: Text('انتهت مهلة عملية الدفع الحالية')),
           );
-        return;
-      }
-
-      _awaitingPaymentReturn = true;
-
-      final opened = await _openPaymentUrl(uri);
-
-      if (!mounted) return;
-
-      if (!opened) {
-        _awaitingPaymentReturn = false;
+      } else if (bookingStatus == 'PAYMENT_FAILED') {
+        if (silent) return;
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            const SnackBar(content: Text('تعذر فتح صفحة الدفع')),
+            const SnackBar(
+              content: Text(
+                'فشل الدفع أو انتهت المهلة. يمكنك إنشاء عملية دفع جديدة إذا ظل الحجز متاحًا',
+              ),
+            ),
           );
-        return;
       }
-
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(
-            content: Text('أكمل الدفع ثم ارجع للتطبيق'),
-          ),
-        );
-    } catch (e) {
-      final handled = await _handleNotVerifiedIfNeeded(e);
-      if (handled) return;
-      if (!mounted) return;
-
-      final msg = _errorMessageAr(e);
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text(msg)),
-        );
+    } catch (_) {
+      if (!mounted || silent) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('تعذر تحديث حالة الحجز')));
     } finally {
       if (mounted) {
-        setState(() => _paying = false);
+        setState(() => _refreshingAfterPayment = false);
       }
     }
   }
@@ -448,8 +584,11 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
         ).future,
       );
 
+      await _clearStoredPaymentId(booking.id);
+
       if (!mounted) return;
 
+      _resetLocalPaymentDraftUi();
       ref.invalidate(bookingByIdProvider(booking.id));
       ref.invalidate(bookingQrProvider(booking.id));
       _invalidateAllBookings();
@@ -472,21 +611,28 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
           ),
         );
     } catch (e) {
-      final handled = await _handleNotVerifiedIfNeeded(e);
-      if (handled) return;
       if (!mounted) return;
 
       final msg = _errorMessageAr(e);
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text(msg)),
-        );
+        ..showSnackBar(SnackBar(content: Text(msg)));
     } finally {
       if (mounted) {
         setState(() => _cancelling = false);
       }
     }
+  }
+
+  void _resetLocalPaymentDraftUi() {
+    setState(() {
+      _paymentResult = null;
+      _verificationStatus = null;
+      _selectedScreenshotFile = null;
+      _notesController.clear();
+      _transactionIdController.clear();
+      _senderNumberController.clear();
+    });
   }
 
   @override
@@ -519,10 +665,7 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
                 const SizedBox(height: 16),
                 const Text(
                   'Missing booking data',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                 ),
                 const SizedBox(height: 8),
                 const Text(
@@ -584,10 +727,7 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
               children: [
                 const Icon(Icons.error_outline, size: 64, color: Colors.red),
                 const SizedBox(height: 16),
-                Text(
-                  _errorMessageAr(e),
-                  textAlign: TextAlign.center,
-                ),
+                Text(_errorMessageAr(e), textAlign: TextAlign.center),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () {
@@ -601,7 +741,8 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
         ),
       ),
       data: (booking) {
-        final statusUpper = booking.status.toUpperCase();
+        final statusUpper = booking.statusUpper;
+        final qrEligibility = ref.watch(bookingQrEligibilityProvider(booking));
 
         const cancelledStatuses = {
           'CANCELLED',
@@ -609,15 +750,9 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
           'CANCELLED_NO_REFUND',
         };
 
-        const qrAllowedStatuses = {
-          'CONFIRMED',
-          'PLAYED',
-          'CHECKED_IN',
-          'COMPLETED',
-        };
-
         final isCancelled = cancelledStatuses.contains(statusUpper);
-        final hasQr = qrAllowedStatuses.contains(statusUpper);
+        final canOpenQrPage = qrEligibility.canShowQr;
+        final canShowQrPreview = qrEligibility.canShowQr;
 
         final payableAmount = booking.depositAsDouble > 0
             ? booking.depositAsDouble
@@ -630,23 +765,53 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
             ? booking.remainingAsDouble
             : (computedCashAtField < 0 ? 0.0 : computedCashAtField);
 
-        final qrAsync = hasQr && !isCancelled
+        final qrAsync = canShowQrPreview && !isCancelled
             ? ref.watch(bookingQrProvider(booking.id))
             : null;
 
-        final canPay = !isCancelled &&
-            statusUpper == 'PENDING_PAYMENT' &&
-            (booking.paymentDeadline == null ||
-                (_remaining == null || _remaining! > Duration.zero));
+        final paymentStatusUpper =
+            _verificationStatus?.verificationStatus.toUpperCase() ?? '';
 
-        final canCancel = !isCancelled &&
+        final hasExistingPaymentSession =
+            _paymentResult != null &&
+            _paymentResult!.paymentId.trim().isNotEmpty;
+
+        final hasBlockingPaymentSession =
+            hasExistingPaymentSession &&
+            paymentStatusUpper != 'REJECTED' &&
+            paymentStatusUpper != 'EXPIRED';
+
+        final deadlineOpen =
+            booking.paymentDeadline == null ||
+            (_remaining == null || _remaining! > Duration.zero);
+
+        final canPay =
+            !isCancelled &&
+            statusUpper == 'PENDING_PAYMENT' &&
+            deadlineOpen &&
+            !hasBlockingPaymentSession;
+
+        final canUploadProof =
+            !isCancelled &&
+            statusUpper == 'PENDING_PAYMENT' &&
+            hasExistingPaymentSession &&
+            paymentStatusUpper != 'REJECTED' &&
+            paymentStatusUpper != 'EXPIRED' &&
+            paymentStatusUpper != 'APPROVED';
+
+        final canCancel =
+            !isCancelled &&
             (statusUpper == 'CONFIRMED' || statusUpper == 'PENDING_PAYMENT');
 
-        final fieldName = (booking.fieldName ?? '').trim().isNotEmpty
-            ? booking.fieldName!.trim()
+        final fieldName = booking.fieldDisplayName != '—'
+            ? booking.fieldDisplayName
             : ((args.field?.nameAr?.trim().isNotEmpty == true)
-                ? args.field!.nameAr!.trim()
-                : (args.field?.name ?? '—'));
+                  ? args.field!.nameAr!.trim()
+                  : (args.field?.name ?? '—'));
+
+        final manualInfoAsync = _selectedGateway != null
+            ? ref.watch(manualPaymentInfoProvider(_selectedGateway!.apiValue))
+            : null;
 
         return Scaffold(
           appBar: AppBar(
@@ -672,13 +837,39 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (_restoringStoredPayment)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: _CardShell(
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'جاري استرجاع حالة الدفع السابقة...',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 _CardShell(
                   child: Column(
                     children: [
-                      if (hasQr && !isCancelled)
+                      if (canShowQrPreview && !isCancelled)
                         qrAsync!.when(
                           loading: () => _qrBoxLoading(),
                           error: (e, _) => _qrBoxError(
+                            message:
+                                booking.isConfirmed || booking.isCheckedInStatus
+                                ? 'حجزك مؤكد، لكن تعذر تحميل الـ QR الآن. حاول مرة أخرى.'
+                                : qrEligibility.message,
                             onRetry: () =>
                                 ref.invalidate(bookingQrProvider(booking.id)),
                           ),
@@ -689,6 +880,8 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
 
                             if (url.trim().isEmpty) {
                               return _qrBoxError(
+                                message:
+                                    'تم تأكيد الحجز لكن صورة الـ QR غير متاحة الآن.',
                                 onRetry: () => ref.invalidate(
                                   bookingQrProvider(booking.id),
                                 ),
@@ -701,12 +894,10 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
                       else if (isCancelled)
                         _qrBoxCancelled()
                       else
-                        _qrBoxPending(),
+                        _qrBoxPending(message: qrEligibility.message),
                       const SizedBox(height: 14),
                       Text(
-                        booking.bookingNumber.trim().isNotEmpty
-                            ? 'Booking #${booking.bookingNumber}'
-                            : 'Booking #${_shortId(booking.id)}',
+                        booking.bookingNumberDisplay,
                         style: const TextStyle(
                           fontWeight: FontWeight.w900,
                           fontSize: 16,
@@ -767,7 +958,7 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
                       const Divider(height: 1),
                       const SizedBox(height: 10),
                       _RowItem(
-                        label: 'Pay at Field (Cash)',
+                        label: 'Pay at Field',
                         value: '${_formatMoney(cashAtFieldAmount)} EGP',
                       ),
                       const SizedBox(height: 12),
@@ -775,27 +966,404 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color:
-                              AppColors.orange.withAlpha((0.08 * 255).round()),
+                          color: AppColors.orange.withAlpha(
+                            (0.08 * 255).round(),
+                          ),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: AppColors.orange
-                                .withAlpha((0.20 * 255).round()),
+                            color: AppColors.orange.withAlpha(
+                              (0.20 * 255).round(),
+                            ),
                           ),
                         ),
-                        child: const Text(
-                          'سيتم فتح صفحة دفع Paymob لإتمام دفع العربون. باقي المبلغ يتم دفعه كاش في الملعب.',
+                        child: Text(
+                          statusUpper == 'CONFIRMED'
+                              ? 'تم تأكيد الحجز بنجاح. سيظهر الـ QR عند الحاجة حسب حالة الحجز.'
+                              : statusUpper == 'PAYMENT_FAILED'
+                              ? 'فشل الدفع أو تم رفضه أو انتهت صلاحيته. ستحتاج إلى إنشاء حجز جديد للمحاولة مرة أخرى.'
+                              : 'ادفع العربون يدويًا عبر فودافون كاش أو إنستا باي، ثم ارفع لقطة شاشة للتحويل. سيتم مراجعة العملية من الأدمن قبل تأكيد الحجز.',
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
-                            color: AppColors.orange,
+                            color: statusUpper == 'CONFIRMED'
+                                ? AppColors.green
+                                : statusUpper == 'PAYMENT_FAILED'
+                                ? Colors.red
+                                : AppColors.orange,
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                if (_refreshingAfterPayment) ...[
+                if (statusUpper == 'PENDING_PAYMENT' &&
+                    hasExistingPaymentSession)
                   const SizedBox(height: 16),
+                if (statusUpper == 'PENDING_PAYMENT' &&
+                    hasExistingPaymentSession)
+                  _CardShell(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'عملية دفع محفوظة',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'تم العثور على عملية دفع محفوظة لهذا الحجز. يمكنك استكمال رفع إثبات التحويل أو متابعة حالة المراجعة.',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 14),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            if (_verificationStatus == null)
+                              OutlinedButton.icon(
+                                onPressed: _refreshingVerificationStatus
+                                    ? null
+                                    : _refreshVerificationStatus,
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('تحديث حالة الدفع'),
+                              ),
+                            OutlinedButton.icon(
+                              onPressed: () async {
+                                final bookingId = booking.id;
+                                await _clearStoredPaymentId(bookingId);
+                                if (!mounted) return;
+                                _resetLocalPaymentDraftUi();
+                                ScaffoldMessenger.of(context)
+                                  ..hideCurrentSnackBar()
+                                  ..showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'تم حذف حالة الدفع المحلية لهذه الشاشة فقط',
+                                      ),
+                                    ),
+                                  );
+                              },
+                              icon: const Icon(Icons.delete_outline),
+                              label: const Text('مسح الحالة المحلية'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                if (canPay) ...[
+                  const SizedBox(height: 16),
+                  _CardShell(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'اختر وسيلة الدفع',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _GatewaySelector(
+                          selected: _selectedGateway,
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedGateway = value;
+                              _paymentResult = null;
+                              _verificationStatus = null;
+                              _selectedScreenshotFile = null;
+                              _notesController.clear();
+                              _transactionIdController.clear();
+                              _senderNumberController.clear();
+                            });
+                          },
+                        ),
+                        if (manualInfoAsync != null) ...[
+                          const SizedBox(height: 14),
+                          manualInfoAsync.when(
+                            loading: () => const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 12),
+                                child: CircularProgressIndicator(),
+                              ),
+                            ),
+                            error: (e, _) => _InfoBox(
+                              icon: Icons.error_outline,
+                              text: _errorMessageAr(e),
+                              color: Colors.red,
+                            ),
+                            data: (info) {
+                              if (!info.isAvailable) {
+                                return const _InfoBox(
+                                  icon: Icons.info_outline,
+                                  text: 'وسيلة الدفع المختارة غير متاحة حاليًا',
+                                  color: Colors.red,
+                                );
+                              }
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (info.instructionsAr.trim().isNotEmpty)
+                                    _InfoBox(
+                                      icon: Icons.info_outline,
+                                      text: info.instructionsAr,
+                                    ),
+                                  if (info.accountDetails.isNotEmpty) ...[
+                                    const SizedBox(height: 12),
+                                    _AccountDetailsCard(
+                                      gateway: info.gateway,
+                                      accountDetails: info.accountDetails,
+                                    ),
+                                  ],
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                        const SizedBox(height: 14),
+                        _PrimaryButton(
+                          text:
+                              hasExistingPaymentSession &&
+                                  (paymentStatusUpper == 'REJECTED' ||
+                                      paymentStatusUpper == 'EXPIRED')
+                              ? 'ابدأ عملية دفع جديدة'
+                              : 'ابدأ الدفع اليدوي',
+                          color: AppColors.orange,
+                          loading: _paying,
+                          onPressed: () => _startManualPayment(booking),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (_paymentResult != null) ...[
+                  const SizedBox(height: 16),
+                  _CardShell(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'بيانات التحويل',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _RowItem(
+                          label: 'Payment ID',
+                          value: _paymentResult!.paymentId,
+                        ),
+                        const SizedBox(height: 10),
+                        const Divider(height: 1),
+                        const SizedBox(height: 10),
+                        _RowItem(
+                          label: 'Reference',
+                          value: _paymentResult!.referenceCode.isNotEmpty
+                              ? _paymentResult!.referenceCode
+                              : (_verificationStatus
+                                            ?.referenceCode
+                                            .isNotEmpty ==
+                                        true
+                                    ? _verificationStatus!.referenceCode
+                                    : '—'),
+                        ),
+                        const SizedBox(height: 10),
+                        const Divider(height: 1),
+                        const SizedBox(height: 10),
+                        _RowItem(
+                          label: 'Gateway',
+                          value: _paymentResult!.gateway.isNotEmpty
+                              ? _paymentResult!.gateway
+                              : (_selectedGateway?.label ?? '—'),
+                        ),
+                        if (_paymentResult!.amount.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          const Divider(height: 1),
+                          const SizedBox(height: 10),
+                          _RowItem(
+                            label: 'Amount',
+                            value:
+                                '${_paymentResult!.amount} ${_paymentResult!.currency}',
+                          ),
+                        ],
+                        if (_paymentResult!.paymentExpiresAt != null) ...[
+                          const SizedBox(height: 10),
+                          const Divider(height: 1),
+                          const SizedBox(height: 10),
+                          _RowItem(
+                            label: 'Expires At',
+                            value: _formatDateTime(
+                              _paymentResult!.paymentExpiresAt!,
+                            ),
+                          ),
+                        ],
+                        if (_paymentResult!.instructionsAr.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          _InfoBox(
+                            icon: Icons.info_outline,
+                            text: _paymentResult!.instructionsAr,
+                          ),
+                        ],
+                        if (_paymentResult!.nextStepAr.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          _InfoBox(
+                            icon: Icons.arrow_forward_rounded,
+                            text: _paymentResult!.nextStepAr,
+                          ),
+                        ],
+                        if (_paymentResult!.accountDetails.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          _AccountDetailsCard(
+                            gateway: _paymentResult!.gateway,
+                            accountDetails: _paymentResult!.accountDetails,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+                if (canUploadProof) ...[
+                  const SizedBox(height: 16),
+                  _CardShell(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'رفع إثبات التحويل',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _uploadingScreenshot
+                              ? null
+                              : _pickScreenshotFile,
+                          icon: const Icon(Icons.attach_file),
+                          label: Text(
+                            _selectedScreenshotFile == null
+                                ? 'اختر صورة أو PDF'
+                                : _selectedScreenshotFile!.path
+                                      .split(Platform.pathSeparator)
+                                      .last,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _senderNumberController,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                            labelText: 'رقم المحول (اختياري)',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _transactionIdController,
+                          decoration: const InputDecoration(
+                            labelText: 'رقم العملية (اختياري)',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _notesController,
+                          maxLines: 3,
+                          decoration: const InputDecoration(
+                            labelText: 'ملاحظات (اختياري)',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        _PrimaryButton(
+                          text: 'رفع لقطة الشاشة',
+                          color: AppColors.green,
+                          loading: _uploadingScreenshot,
+                          onPressed: _uploadScreenshot,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (_verificationStatus != null) ...[
+                  const SizedBox(height: 16),
+                  _CardShell(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'حالة التحقق',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _VerificationBadge(
+                          status: _verificationStatus!.verificationStatus,
+                        ),
+                        const SizedBox(height: 12),
+                        _RowItem(
+                          label: 'Reference',
+                          value: _verificationStatus!.referenceCode,
+                        ),
+                        const SizedBox(height: 10),
+                        const Divider(height: 1),
+                        const SizedBox(height: 10),
+                        _RowItem(
+                          label: 'Submitted At',
+                          value: _verificationStatus!.submittedAt != null
+                              ? _formatDateTime(
+                                  _verificationStatus!.submittedAt!,
+                                )
+                              : '—',
+                        ),
+                        const SizedBox(height: 10),
+                        const Divider(height: 1),
+                        const SizedBox(height: 10),
+                        _RowItem(
+                          label: 'Verification ETA',
+                          value: _verificationStatus!.estimatedVerificationTime,
+                        ),
+                        const SizedBox(height: 10),
+                        const Divider(height: 1),
+                        const SizedBox(height: 10),
+                        _RowItem(
+                          label: 'Upload Attempts',
+                          value:
+                              '${_verificationStatus!.uploadAttempts}/${_verificationStatus!.maxUploadAttempts}',
+                        ),
+                        if ((_verificationStatus!.rejectionReason ?? '')
+                            .trim()
+                            .isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          _InfoBox(
+                            icon: Icons.error_outline,
+                            text: _verificationStatus!.rejectionReason!.trim(),
+                            color: Colors.red,
+                          ),
+                        ],
+                        const SizedBox(height: 14),
+                        _SecondaryButton(
+                          text: 'تحديث حالة الدفع',
+                          loading:
+                              _refreshingVerificationStatus ||
+                              _refreshingAfterPayment,
+                          onPressed: _refreshVerificationStatus,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (paymentStatusUpper == 'PENDING' ||
+                    paymentStatusUpper == 'LOCKED') ...[
+                  const SizedBox(height: 12),
                   const _CardShell(
                     child: Row(
                       children: [
@@ -807,7 +1375,7 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
                         SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'جارٍ تحديث حالة الحجز بعد الرجوع من صفحة الدفع...',
+                            'عملية الدفع الآن قيد المراجعة من الأدمن',
                             style: TextStyle(fontWeight: FontWeight.w700),
                           ),
                         ),
@@ -815,17 +1383,88 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
                     ),
                   ),
                 ],
-                const SizedBox(height: 20),
-                if (canPay)
-                  _PrimaryButton(
-                    text: 'Pay Deposit Now',
-                    color: AppColors.orange,
-                    loading: _paying,
-                    onPressed: () => _startOnlinePayment(booking),
+                if (paymentStatusUpper == 'REJECTED') ...[
+                  const SizedBox(height: 12),
+                  _CardShell(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'تم رفض الدفع',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: Colors.red,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          (_verificationStatus?.rejectionReason ?? '')
+                                  .trim()
+                                  .isNotEmpty
+                              ? _verificationStatus!.rejectionReason!.trim()
+                              : 'تم رفض إثبات الدفع لهذه العملية.',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'يمكنك بدء عملية دفع جديدة طالما أن الحجز ما زال في حالة Pending Payment.',
+                        ),
+                      ],
+                    ),
                   ),
-                if (hasQr && !isCancelled)
+                ],
+                if (paymentStatusUpper == 'EXPIRED') ...[
+                  const SizedBox(height: 12),
+                  const _CardShell(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'انتهت مهلة الدفع',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: Colors.red,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'انتهت صلاحية عملية الدفع الحالية. يمكنك بدء عملية جديدة إذا كان الحجز ما زال متاحًا للدفع.',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (statusUpper == 'PAYMENT_FAILED') ...[
+                  const SizedBox(height: 12),
+                  _CardShell(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'الحجز لم يتأكد',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: Colors.red,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          (_verificationStatus?.rejectionReason ?? '')
+                                  .trim()
+                                  .isNotEmpty
+                              ? 'سبب الرفض: ${_verificationStatus!.rejectionReason!.trim()}'
+                              : 'فشل الدفع أو تم رفضه أو انتهت صلاحيته. يلزم إنشاء حجز جديد إذا أردت المحاولة مرة أخرى.',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                if (canOpenQrPage)
                   _PrimaryButton(
-                    text: 'Show QR',
+                    text: booking.qrIsUsed ? 'Show Used QR' : 'Show QR',
                     color: AppColors.green,
                     onPressed: () => context.push('/booking/${booking.id}/qr'),
                   ),
@@ -860,7 +1499,7 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
                 _SecondaryButton(
                   text: 'Refresh Booking Status',
                   loading: _refreshingAfterPayment,
-                  onPressed: _refreshAfterPaymentReturn,
+                  onPressed: () => _refreshBookingAfterPaymentStatus(),
                 ),
                 const SizedBox(height: 20),
                 Row(
@@ -890,12 +1529,10 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
   }
 
   Widget _qrBoxLoading() {
-    return const _QrBox(
-      child: Center(child: CircularProgressIndicator()),
-    );
+    return const _QrBox(child: Center(child: CircularProgressIndicator()));
   }
 
-  Widget _qrBoxError({required VoidCallback onRetry}) {
+  Widget _qrBoxError({required VoidCallback onRetry, String? message}) {
     return _QrBox(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -910,15 +1547,13 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
               style: TextStyle(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 6),
-            const Text(
-              'Your booking may still be confirmed. Please try again later.',
+            Text(
+              message ??
+                  'Your booking may still be confirmed. Please try again later.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: onRetry,
-              child: const Text('Retry'),
-            ),
+            ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
           ],
         ),
       ),
@@ -936,13 +1571,16 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
     );
   }
 
-  Widget _qrBoxPending() {
-    return const _QrBox(
+  Widget _qrBoxPending({required String message}) {
+    return _QrBox(
       child: Center(
-        child: Text(
-          'QR will appear after payment confirmation',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontWeight: FontWeight.w800),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
         ),
       ),
     );
@@ -1038,17 +1676,12 @@ if (status == 'CONFIRMED' || status == 'PLAYED') {
 class _CardShell extends StatelessWidget {
   final Widget child;
 
-  const _CardShell({
-    required this.child,
-  });
+  const _CardShell({required this.child});
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: child,
-      ),
+      child: Padding(padding: const EdgeInsets.all(18), child: child),
     );
   }
 }
@@ -1056,9 +1689,7 @@ class _CardShell extends StatelessWidget {
 class _QrBox extends StatelessWidget {
   final Widget child;
 
-  const _QrBox({
-    required this.child,
-  });
+  const _QrBox({required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -1114,10 +1745,7 @@ class _PrimaryButton extends StatelessWidget {
                     color: Colors.white,
                   ),
                 )
-              : Text(
-                  text,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
+              : Text(text, style: const TextStyle(fontWeight: FontWeight.w900)),
         ),
       ),
     );
@@ -1155,10 +1783,7 @@ class _SecondaryButton extends StatelessWidget {
                 width: 18,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : Text(
-                text,
-                style: const TextStyle(fontWeight: FontWeight.w900),
-              ),
+            : Text(text, style: const TextStyle(fontWeight: FontWeight.w900)),
       ),
     );
   }
@@ -1168,19 +1793,14 @@ class _GhostButton extends StatelessWidget {
   final String text;
   final VoidCallback? onPressed;
 
-  const _GhostButton({
-    required this.text,
-    this.onPressed,
-  });
+  const _GhostButton({required this.text, this.onPressed});
 
   @override
   Widget build(BuildContext context) {
     return TextButton(
       style: TextButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
       onPressed: onPressed,
       child: Text(
@@ -1195,9 +1815,7 @@ class _GhostButton extends StatelessWidget {
 class _StatusBadge extends StatelessWidget {
   final String status;
 
-  const _StatusBadge({
-    required this.status,
-  });
+  const _StatusBadge({required this.status});
 
   @override
   Widget build(BuildContext context) {
@@ -1213,11 +1831,7 @@ class _StatusBadge extends StatelessWidget {
       ),
       child: Text(
         _statusLabel(s),
-        style: TextStyle(
-          color: fg,
-          fontWeight: FontWeight.w900,
-          fontSize: 12,
-        ),
+        style: TextStyle(color: fg, fontWeight: FontWeight.w900, fontSize: 12),
       ),
     );
   }
@@ -1225,10 +1839,11 @@ class _StatusBadge extends StatelessWidget {
   static Color _statusColor(String s) {
     switch (s) {
       case 'CONFIRMED':
-      case 'PLAYED':
-      case 'COMPLETED':
       case 'CHECKED_IN':
         return AppColors.green;
+      case 'PLAYED':
+      case 'COMPLETED':
+        return Colors.blue;
       case 'PENDING_PAYMENT':
         return AppColors.orange;
       case 'CANCELLED':
@@ -1273,25 +1888,248 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
+class _VerificationBadge extends StatelessWidget {
+  final String status;
+
+  const _VerificationBadge({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = status.toUpperCase();
+    final fg = _color(s);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: fg.withAlpha((0.14 * 255).round()),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        _label(s),
+        style: TextStyle(color: fg, fontWeight: FontWeight.w900),
+      ),
+    );
+  }
+
+  static Color _color(String s) {
+    switch (s) {
+      case 'APPROVED':
+        return AppColors.green;
+      case 'PENDING':
+      case 'LOCKED':
+        return AppColors.orange;
+      case 'REJECTED':
+      case 'EXPIRED':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  static String _label(String s) {
+    switch (s) {
+      case 'APPROVED':
+        return 'Approved';
+      case 'PENDING':
+        return 'Pending Review';
+      case 'LOCKED':
+        return 'Under Review';
+      case 'REJECTED':
+        return 'Rejected';
+      case 'EXPIRED':
+        return 'Expired';
+      default:
+        return s;
+    }
+  }
+}
+
+class _GatewaySelector extends StatelessWidget {
+  final ManualPaymentGateway? selected;
+  final ValueChanged<ManualPaymentGateway?> onChanged;
+
+  const _GatewaySelector({required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: ManualPaymentGateway.values.map((gateway) {
+        final active = selected == gateway;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => onChanged(gateway),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: active ? AppColors.orange : Colors.grey.shade300,
+                  width: active ? 1.6 : 1,
+                ),
+                color: active
+                    ? AppColors.orange.withAlpha((0.08 * 255).round())
+                    : Colors.transparent,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    active
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    color: active ? AppColors.orange : Colors.grey,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      gateway.labelAr,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  Text(
+                    gateway.label,
+                    style: const TextStyle(
+                      color: AppColors.subText,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _AccountDetailsCard extends StatelessWidget {
+  final String gateway;
+  final Map<String, dynamic> accountDetails;
+
+  const _AccountDetailsCard({
+    required this.gateway,
+    required this.accountDetails,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = accountDetails.entries
+        .where((e) => e.value != null && e.value.toString().trim().isNotEmpty)
+        .toList();
+
+    if (entries.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Account Details (${gateway.toUpperCase()})',
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          ...entries.map(
+            (entry) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _RowItem(
+                label: _beautifyKey(entry.key),
+                value: entry.value.toString(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _beautifyKey(String key) {
+    switch (key) {
+      case 'accountNumber':
+        return 'Account Number';
+      case 'accountName':
+        return 'Account Name';
+      case 'mobileNumber':
+        return 'Mobile Number';
+      case 'ipn':
+        return 'IPN';
+      case 'bankAccount':
+        return 'Bank Account';
+      default:
+        return key;
+    }
+  }
+}
+
+class _InfoBox extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color? color;
+
+  const _InfoBox({required this.icon, required this.text, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final resolvedColor = color ?? AppColors.orange;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: resolvedColor.withAlpha((0.08 * 255).round()),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: resolvedColor.withAlpha((0.18 * 255).round()),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: resolvedColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: resolvedColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CountdownPill extends StatelessWidget {
   final DateTime deadline;
   final Duration? remaining;
 
-  const _CountdownPill({
-    required this.deadline,
-    required this.remaining,
-  });
+  const _CountdownPill({required this.deadline, required this.remaining});
 
   @override
   Widget build(BuildContext context) {
     final rem = remaining ?? deadline.difference(DateTime.now());
     final safe = rem.isNegative ? Duration.zero : rem;
 
+    final hh = safe.inHours.toString().padLeft(2, '0');
     final mm = safe.inMinutes.remainder(60).toString().padLeft(2, '0');
     final ss = safe.inSeconds.remainder(60).toString().padLeft(2, '0');
 
-    final text =
-        safe == Duration.zero ? 'Payment expired' : 'Complete payment in $mm:$ss';
+    final text = safe == Duration.zero
+        ? 'Payment expired'
+        : 'Complete payment in $hh:$mm:$ss';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -1314,10 +2152,7 @@ class _RowItem extends StatelessWidget {
   final String label;
   final String value;
 
-  const _RowItem({
-    required this.label,
-    required this.value,
-  });
+  const _RowItem({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -1368,6 +2203,10 @@ String _formatTime(DateTime d) {
   h = h % 12;
   if (h == 0) h = 12;
   return '$h:$m $ampm';
+}
+
+String _formatDateTime(DateTime d) {
+  return '${_formatDate(d)} ${_formatTime(d)}';
 }
 
 String _formatMoney(double value) {

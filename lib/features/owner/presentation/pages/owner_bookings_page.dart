@@ -204,8 +204,8 @@ class _OwnerBookingsPageState extends ConsumerState<OwnerBookingsPage> {
       final player = result.data.player;
       final suspendedText =
           player.isSuspended && player.suspendedUntil != null
-          ? '\nPlayer suspended until ${_formatDateTime(player.suspendedUntil!)}'
-          : '';
+              ? '\nPlayer suspended until ${_formatDateTime(player.suspendedUntil!)}'
+              : '';
 
       messenger.showSnackBar(
         SnackBar(
@@ -256,11 +256,6 @@ class _OwnerBookingsPageState extends ConsumerState<OwnerBookingsPage> {
               },
             ),
             icon: const Icon(Icons.qr_code_scanner_outlined),
-          ),
-          IconButton(
-            tooltip: 'Wallet',
-            onPressed: () => context.push('/owner/wallet'),
-            icon: const Icon(Icons.account_balance_wallet_outlined),
           ),
           if (isFieldScope)
             IconButton(
@@ -427,12 +422,12 @@ class _OwnerBookingsPageState extends ConsumerState<OwnerBookingsPage> {
                           '/owner/check-in',
                           extra: {
                             'fieldId': widget.fieldId ?? booking.fieldId,
-                            'fieldName':
-                                widget.fieldName ??((booking.fieldNameAr ?? '').trim().isNotEmpty
-    ? booking.fieldNameAr!.trim()
-    : ((booking.fieldName ?? '').trim().isNotEmpty
-        ? booking.fieldName!.trim()
-        : 'Unknown field')),
+                            'fieldName': widget.fieldName ??
+                                ((booking.fieldNameAr ?? '').trim().isNotEmpty
+                                    ? booking.fieldNameAr!.trim()
+                                    : ((booking.fieldName ?? '').trim().isNotEmpty
+                                        ? booking.fieldName!.trim()
+                                        : 'Unknown field')),
                             'bookingId': booking.id,
                             'qrToken': booking.qrToken,
                           },
@@ -619,10 +614,10 @@ class _BookingCard extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 ((booking.fieldNameAr ?? '').trim().isNotEmpty
-    ? booking.fieldNameAr!.trim()
-    : ((booking.fieldName ?? '').trim().isNotEmpty
-        ? booking.fieldName!.trim()
-        : 'Unknown field')),
+                    ? booking.fieldNameAr!.trim()
+                    : ((booking.fieldName ?? '').trim().isNotEmpty
+                        ? booking.fieldName!.trim()
+                        : 'Unknown field')),
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
@@ -631,19 +626,19 @@ class _BookingCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 ((booking.playerName ?? '').trim().isNotEmpty
-    ? booking.playerName!.trim()
-    : ((booking.email ?? '').trim().isNotEmpty
-        ? booking.email!.trim()
-        : ((booking.phone ?? '').trim().isNotEmpty
-            ? booking.phone!.trim()
-            : 'Unknown player'))),
+                    ? booking.playerName!.trim()
+                    : ((booking.email ?? '').trim().isNotEmpty
+                        ? booking.email!.trim()
+                        : ((booking.phone ?? '').trim().isNotEmpty
+                            ? booking.phone!.trim()
+                            : 'Unknown player'))),
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               if (((booking.email ?? '').trim().isNotEmpty ||
- (booking.phone ?? '').trim().isNotEmpty)) ...[
+                  (booking.phone ?? '').trim().isNotEmpty)) ...[
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
@@ -681,7 +676,7 @@ class _BookingCard extends StatelessWidget {
                 title: 'Booking ID',
                 value: booking.id,
               ),
-             if (booking.qrToken?.trim().isNotEmpty == true) ...[ 
+              if (booking.qrToken?.trim().isNotEmpty == true) ...[
                 const SizedBox(height: 8),
                 _InfoRow(
                   icon: Icons.qr_code_2_outlined,

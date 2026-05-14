@@ -6,7 +6,6 @@ import 'base_url.dart';
 class ApiClient {
   ApiClient({
     String? baseUrl,
-    Interceptor? authInterceptor,
   }) : dio = Dio(
           BaseOptions(
             baseUrl: _normalizeBaseUrl(baseUrl ?? resolveApiBaseUrl()),
@@ -23,38 +22,44 @@ class ApiClient {
         ) {
     _log('API BASE URL -> ${dio.options.baseUrl}');
 
+    // Logging
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          if (_token != null) {
+            options.headers['Authorization'] = 'Bearer $_token';
+          }
+
           _log('REQUEST -> ${options.method} ${options.uri}');
-          _log('HEADERS -> ${options.headers}');
-          _log('QUERY -> ${options.queryParameters}');
+          _log('HEADERS -> ${_redactHeaders(options.headers)}');
           _log('DATA -> ${options.data}');
           handler.next(options);
         },
         onResponse: (response, handler) {
-          _log(
-            'RESPONSE -> ${response.statusCode} ${response.requestOptions.uri}',
-          );
+          _log('RESPONSE -> ${response.statusCode}');
           _log('DATA -> ${response.data}');
           handler.next(response);
         },
         onError: (e, handler) {
-          _log('ERROR -> ${e.type} | ${e.message}');
-          _log('REQUEST -> ${e.requestOptions.method} ${e.requestOptions.uri}');
-          _log('STATUS -> ${e.response?.statusCode}');
-          _log('DATA -> ${e.response?.data}');
+          _log('ERROR -> ${e.message}');
           handler.next(e);
         },
       ),
     );
-
-    if (authInterceptor != null) {
-      dio.interceptors.add(authInterceptor);
-    }
   }
 
   final Dio dio;
+
+  // ✅ TOKEN
+  static String? _token;
+
+  static void setToken(String token) {
+    _token = token;
+  }
+
+  static void clearToken() {
+    _token = null;
+  }
 
   static String _normalizeBaseUrl(String baseUrl) {
     final trimmed = baseUrl.trim();
@@ -74,6 +79,16 @@ class ApiClient {
     }
   }
 
+  static String _redactHeaders(Map<String, dynamic>? headers) {
+    if (headers == null || headers.isEmpty) return '{}';
+    final copy = Map<String, dynamic>.from(headers);
+    final auth = copy['Authorization'];
+    if (auth is String && auth.trim().isNotEmpty) {
+      copy['Authorization'] = 'Bearer ***';
+    }
+    return copy.toString();
+  }
+
   String _fixPath(String path) {
     final trimmed = path.trim();
     if (trimmed.isEmpty) {
@@ -81,6 +96,10 @@ class ApiClient {
     }
     return trimmed.startsWith('/') ? trimmed.substring(1) : trimmed;
   }
+
+  // ========================
+  // ✅ FULL METHODS (FIX)
+  // ========================
 
   Future<Response<dynamic>> get(
     String path, {
@@ -112,22 +131,6 @@ class ApiClient {
     );
   }
 
-  Future<Response<dynamic>> put(
-    String path, {
-    dynamic data,
-    Map<String, dynamic>? queryParameters,
-    Options? options,
-    CancelToken? cancelToken,
-  }) {
-    return dio.put(
-      _fixPath(path),
-      data: data,
-      queryParameters: queryParameters,
-      options: options,
-      cancelToken: cancelToken,
-    );
-  }
-
   Future<Response<dynamic>> patch(
     String path, {
     dynamic data,
@@ -136,6 +139,22 @@ class ApiClient {
     CancelToken? cancelToken,
   }) {
     return dio.patch(
+      _fixPath(path),
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<Response<dynamic>> put(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    CancelToken? cancelToken,
+  }) {
+    return dio.put(
       _fixPath(path),
       data: data,
       queryParameters: queryParameters,

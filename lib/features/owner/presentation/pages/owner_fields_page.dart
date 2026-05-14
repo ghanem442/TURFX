@@ -125,11 +125,6 @@ class OwnerFieldsPage extends ConsumerWidget {
             icon: const Icon(Icons.calendar_month_outlined),
           ),
           IconButton(
-            tooltip: 'Wallet',
-            onPressed: () => context.push('/owner/wallet'),
-            icon: const Icon(Icons.account_balance_wallet_outlined),
-          ),
-          IconButton(
             tooltip: 'Refresh',
             onPressed: () => _refreshFields(ref),
             icon: const Icon(Icons.refresh),

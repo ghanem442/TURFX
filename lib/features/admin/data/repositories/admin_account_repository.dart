@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:football/core/network/api_client.dart';
+import 'package:football/core/network/backend_error_text.dart';
 
 class AdminProfileUpdateResult {
   final String id;
@@ -49,12 +50,12 @@ class AdminAccountRepository {
 
         final plainMsg = error['message']?.toString().trim();
         if (plainMsg != null && plainMsg.isNotEmpty) {
-          return plainMsg;
+          return humanizeBackendErrorText(plainMsg);
         }
 
         final code = error['code']?.toString().trim();
         if (code != null && code.isNotEmpty) {
-          return code;
+          return humanizeBackendErrorText(code);
         }
       }
 
@@ -70,12 +71,12 @@ class AdminAccountRepository {
 
       final plain = raw['message']?.toString().trim();
       if (plain != null && plain.isNotEmpty) {
-        return plain;
+        return humanizeBackendErrorText(plain);
       }
     }
 
     if (raw is String && raw.trim().isNotEmpty) {
-      return raw.trim();
+      return humanizeBackendErrorText(raw.trim());
     }
 
     return 'Request failed';
@@ -127,7 +128,11 @@ class AdminAccountRepository {
         Map<String, dynamic>.from(data),
       );
     } on DioException catch (e) {
-      throw Exception(_extractErrorMessage(e.response?.data));
+      final raw = e.response?.data;
+      if (raw is Map) {
+        throw Exception(_extractErrorMessage(raw));
+      }
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -175,12 +180,16 @@ class AdminAccountRepository {
 
       final plain = message?.toString().trim();
       if (plain != null && plain.isNotEmpty) {
-        return plain;
+        return humanizeBackendErrorText(plain);
       }
 
       return 'Password changed successfully';
     } on DioException catch (e) {
-      throw Exception(_extractErrorMessage(e.response?.data));
+      final raw = e.response?.data;
+      if (raw is Map) {
+        throw Exception(_extractErrorMessage(raw));
+      }
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }

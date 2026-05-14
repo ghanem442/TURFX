@@ -15,26 +15,12 @@ class PaymentResultModel {
     this.raw,
   });
 
-  bool get isSuccess {
-    if (success != true) return false;
+  bool get isSuccess => success && data != null;
 
-    final dataStatus = data?.status.trim().toUpperCase();
-    if (dataStatus == null || dataStatus.isEmpty) {
-      return true;
-    }
-
-    return dataStatus == 'SUCCESS' ||
-        dataStatus == 'SUCCEEDED' ||
-        dataStatus == 'COMPLETED' ||
-        dataStatus == 'PAID' ||
-        dataStatus == 'CONFIRMED' ||
-        dataStatus == 'PENDING' ||
-        dataStatus == 'INITIATED' ||
-        dataStatus == 'CREATED';
+  String? get errorCode {
+    final code = error?.code.trim() ?? '';
+    return code.isEmpty ? null : code;
   }
-
-  String? get errorCode =>
-      (error?.code.trim().isNotEmpty == true) ? error!.code.trim() : null;
 
   String get errorEn => error?.en ?? '';
   String get errorAr => error?.ar ?? '';
@@ -48,7 +34,7 @@ class PaymentResultModel {
     if (rootMessage.isNotEmpty) return rootMessage;
     if (errorCode?.isNotEmpty == true) return errorCode!;
     if (rootStatus.isNotEmpty) return rootStatus;
-    return 'حدث خطأ أثناء الدفع';
+    return 'حدث خطأ أثناء إنشاء عملية الدفع';
   }
 
   String get userMessageEn {
@@ -57,60 +43,48 @@ class PaymentResultModel {
     if (rootMessage.isNotEmpty) return rootMessage;
     if (errorCode?.isNotEmpty == true) return errorCode!;
     if (rootStatus.isNotEmpty) return rootStatus;
-    return 'Payment failed';
+    return 'Failed to initiate payment';
   }
 
-  String get redirectUrl {
-    final dataRedirect = data?.redirectUrl?.trim() ?? '';
-    if (dataRedirect.isNotEmpty) return dataRedirect;
+  String get paymentId => data?.paymentId ?? '';
+  String get bookingId => data?.bookingId ?? '';
+  String get amount => data?.amount ?? '';
+  String get currency => data?.currency ?? '';
+  String get gateway => data?.gateway ?? '';
+  String get normalizedGateway => gateway.trim().toUpperCase();
+  String get paymentType => data?.paymentType ?? '';
+  String get normalizedPaymentType => paymentType.trim().toUpperCase();
+  String get referenceCode => data?.referenceCode ?? '';
+  DateTime? get paymentExpiresAt => data?.paymentExpiresAt;
+  int get expiryMinutes => data?.expiryMinutes ?? 0;
 
-    final rawRedirect = _pickFirstString(raw, const [
-      'redirectUrl',
-      'redirect_url',
-      'paymentUrl',
-      'payment_url',
-      'url',
-    ]);
-    if (rawRedirect.isNotEmpty) return rawRedirect;
+  Map<String, dynamic> get instructions => data?.instructions ?? const {};
+  Map<String, dynamic> get accountDetails => data?.accountDetails ?? const {};
+  Map<String, dynamic> get nextStep => data?.nextStep ?? const {};
 
-    return '';
-  }
+  String get instructionsAr => (instructions['ar'] ?? '').toString().trim();
+  String get instructionsEn => (instructions['en'] ?? '').toString().trim();
 
-  String get paymentToken {
-    final dataToken = data?.paymentToken?.trim() ?? '';
-    if (dataToken.isNotEmpty) return dataToken;
+  String get nextStepAr => (nextStep['ar'] ?? '').toString().trim();
+  String get nextStepEn => (nextStep['en'] ?? '').toString().trim();
 
-    final rawToken = _pickFirstString(raw, const [
-      'paymentToken',
-      'payment_token',
-      'token',
-    ]);
-    if (rawToken.isNotEmpty) return rawToken;
+  bool get hasAccountDetails => accountDetails.isNotEmpty;
+  bool get hasInstructions => instructionsAr.isNotEmpty || instructionsEn.isNotEmpty;
+  bool get hasNextStep => nextStepAr.isNotEmpty || nextStepEn.isNotEmpty;
+  bool get hasExpiry => paymentExpiresAt != null || expiryMinutes > 0;
 
-    return '';
-  }
-
-  String get iframeId {
-    final dataIframeId = data?.iframeId?.trim() ?? '';
-    if (dataIframeId.isNotEmpty) return dataIframeId;
-
-    final rawIframeId = _pickFirstString(raw, const [
-      'iframeId',
-      'iframe_id',
-    ]);
-    if (rawIframeId.isNotEmpty) return rawIframeId;
-
-    return '';
-  }
-
-  bool get hasRedirectUrl => redirectUrl.isNotEmpty;
-  bool get hasPaymentToken => paymentToken.isNotEmpty;
-  bool get hasIframeId => iframeId.isNotEmpty;
+  bool get isVodafoneCash => normalizedGateway == 'VODAFONE_CASH';
+  bool get isInstaPay => normalizedGateway == 'INSTAPAY';
 
   factory PaymentResultModel.fromAny(dynamic raw) {
+    if (raw is Map<String, dynamic>) {
+      return PaymentResultModel.fromJson(raw);
+    }
+
     if (raw is Map) {
       return PaymentResultModel.fromJson(Map<String, dynamic>.from(raw));
     }
+
     return const PaymentResultModel(
       success: false,
       data: null,
@@ -124,53 +98,18 @@ class PaymentResultModel {
   factory PaymentResultModel.fromJson(Map<String, dynamic> json) {
     final root = Map<String, dynamic>.from(json);
 
-    final nestedData = root['data'];
-    final dataMap = nestedData is Map<String, dynamic>
-        ? nestedData
-        : (nestedData is Map ? Map<String, dynamic>.from(nestedData) : null);
+    final rawData = root['data'];
+    final dataMap = rawData is Map<String, dynamic>
+        ? rawData
+        : (rawData is Map ? Map<String, dynamic>.from(rawData) : null);
 
-    final errJson = root['error'];
-
-    final normalizedData = <String, dynamic>{
-      if (dataMap != null) ...dataMap,
-      if ((dataMap?['paymentId'] == null || '${dataMap?['paymentId']}'.isEmpty) &&
-          root['paymentId'] != null)
-        'paymentId': root['paymentId'],
-      if ((dataMap?['transactionId'] == null ||
-              '${dataMap?['transactionId']}'.isEmpty) &&
-          root['transactionId'] != null)
-        'transactionId': root['transactionId'],
-      if ((dataMap?['status'] == null || '${dataMap?['status']}'.isEmpty) &&
-          root['status'] != null)
-        'status': root['status'],
-      if ((dataMap?['redirectUrl'] == null ||
-              '${dataMap?['redirectUrl']}'.isEmpty) &&
-          root['redirectUrl'] != null)
-        'redirectUrl': root['redirectUrl'],
-      if ((dataMap?['paymentToken'] == null ||
-              '${dataMap?['paymentToken']}'.isEmpty) &&
-          root['paymentToken'] != null)
-        'paymentToken': root['paymentToken'],
-      if ((dataMap?['iframeId'] == null || '${dataMap?['iframeId']}'.isEmpty) &&
-          root['iframeId'] != null)
-        'iframeId': root['iframeId'],
-      if ((dataMap?['amount'] == null || '${dataMap?['amount']}'.isEmpty) &&
-          root['amount'] != null)
-        'amount': root['amount'],
-      if ((dataMap?['currency'] == null || '${dataMap?['currency']}'.isEmpty) &&
-          root['currency'] != null)
-        'currency': root['currency'],
-    };
-
-    final inferredSuccess = _inferSuccess(root, normalizedData);
+    final rawError = root['error'];
 
     return PaymentResultModel(
-      success: inferredSuccess,
-      data: normalizedData.isNotEmpty
-          ? PaymentDataModel.fromJson(normalizedData)
-          : null,
-      error: errJson is Map
-          ? PaymentErrorModel.fromJson(Map<String, dynamic>.from(errJson))
+      success: root['success'] == true,
+      data: dataMap != null ? PaymentDataModel.fromJson(dataMap) : null,
+      error: rawError is Map
+          ? PaymentErrorModel.fromJson(Map<String, dynamic>.from(rawError))
           : null,
       message: root['message']?.toString(),
       status: root['status']?.toString(),
@@ -178,163 +117,90 @@ class PaymentResultModel {
     );
   }
 
-  static bool _inferSuccess(
-    Map<String, dynamic> root,
-    Map<String, dynamic> normalizedData,
-  ) {
-    if (root['success'] == true) return true;
-    if (root['success'] == false) return false;
-
-    final error = root['error'];
-    if (error != null) return false;
-
-    final status = (normalizedData['status'] ?? root['status'] ?? '')
-        .toString()
-        .trim()
-        .toUpperCase();
-
-    if (status.isNotEmpty) {
-      const positiveStatuses = {
-        'SUCCESS',
-        'SUCCEEDED',
-        'COMPLETED',
-        'PAID',
-        'CONFIRMED',
-        'PENDING',
-        'INITIATED',
-        'CREATED',
-      };
-
-      const negativeStatuses = {
-        'FAILED',
-        'FAIL',
-        'ERROR',
-        'REJECTED',
-        'CANCELLED',
-        'CANCELED',
-      };
-
-      if (positiveStatuses.contains(status)) return true;
-      if (negativeStatuses.contains(status)) return false;
-    }
-
-    final hasUsefulPaymentPayload =
-        _pickFirstString(root, const [
-          'redirectUrl',
-          'redirect_url',
-          'paymentUrl',
-          'payment_url',
-          'paymentToken',
-          'payment_token',
-          'token',
-          'iframeId',
-          'iframe_id',
-        ]).isNotEmpty ||
-            _pickFirstString(normalizedData, const [
-              'redirectUrl',
-              'redirect_url',
-              'paymentUrl',
-              'payment_url',
-              'paymentToken',
-              'payment_token',
-              'token',
-              'iframeId',
-              'iframe_id',
-            ]).isNotEmpty;
-
-    if (hasUsefulPaymentPayload) return true;
-
-    return false;
-  }
-
-  static String _pickFirstString(
-    Map<String, dynamic>? source,
-    List<String> keys,
-  ) {
-    if (source == null) return '';
-
-    for (final key in keys) {
-      final value = source[key];
-      final text = value?.toString().trim() ?? '';
-      if (text.isNotEmpty) return text;
-    }
-
-    return '';
-  }
-
   @override
   String toString() {
     return 'PaymentResultModel('
         'success: $success, '
-        'status: $status, '
+        'paymentId: ${data?.paymentId}, '
+        'bookingId: ${data?.bookingId}, '
+        'gateway: ${data?.gateway}, '
+        'paymentType: ${data?.paymentType}, '
+        'amount: ${data?.amount}, '
+        'currency: ${data?.currency}, '
+        'referenceCode: ${data?.referenceCode}, '
+        'paymentExpiresAt: ${data?.paymentExpiresAt}, '
+        'expiryMinutes: ${data?.expiryMinutes}, '
         'message: $message, '
-        'errorCode: ${error?.code}, '
-        'dataStatus: ${data?.status}, '
-        'redirectUrl: ${data?.redirectUrl}, '
-        'paymentToken: ${data?.paymentToken}, '
-        'iframeId: ${data?.iframeId}, '
-        'raw: $raw'
+        'status: $status, '
+        'errorCode: ${error?.code}'
         ')';
   }
 }
 
 class PaymentDataModel {
   final String paymentId;
-  final String transactionId;
-  final String status;
-  final String? redirectUrl;
+  final String bookingId;
   final String amount;
   final String currency;
-  final String? paymentToken;
-  final String? iframeId;
+  final String gateway;
+  final String paymentType;
+  final String referenceCode;
+  final DateTime? paymentExpiresAt;
+  final int expiryMinutes;
+  final Map<String, dynamic> instructions;
+  final Map<String, dynamic> accountDetails;
+  final Map<String, dynamic> nextStep;
 
   const PaymentDataModel({
     required this.paymentId,
-    required this.transactionId,
-    required this.status,
-    required this.redirectUrl,
+    required this.bookingId,
     required this.amount,
     required this.currency,
-    required this.paymentToken,
-    required this.iframeId,
+    required this.gateway,
+    required this.paymentType,
+    required this.referenceCode,
+    required this.paymentExpiresAt,
+    required this.expiryMinutes,
+    required this.instructions,
+    required this.accountDetails,
+    required this.nextStep,
   });
 
   factory PaymentDataModel.fromJson(Map<String, dynamic> json) {
     return PaymentDataModel(
-      paymentId: (json['paymentId'] ?? '').toString(),
-      transactionId: (json['transactionId'] ?? '').toString(),
-      status: (json['status'] ?? '').toString(),
-      redirectUrl: _firstNonEmpty(json, const [
-        'redirectUrl',
-        'redirect_url',
-        'paymentUrl',
-        'payment_url',
-        'url',
-      ]),
-      amount: (json['amount'] ?? '0').toString(),
-      currency: (json['currency'] ?? '').toString(),
-      paymentToken: _firstNonEmpty(json, const [
-        'paymentToken',
-        'payment_token',
-        'token',
-      ]),
-      iframeId: _firstNonEmpty(json, const [
-        'iframeId',
-        'iframe_id',
-      ]),
+      paymentId: (json['paymentId'] ?? '').toString().trim(),
+      bookingId: (json['bookingId'] ?? '').toString().trim(),
+      amount: (json['amount'] ?? '').toString().trim(),
+      currency: (json['currency'] ?? '').toString().trim(),
+      gateway: (json['gateway'] ?? '').toString().trim(),
+      paymentType: (json['paymentType'] ?? '').toString().trim(),
+      referenceCode: (json['referenceCode'] ?? '').toString().trim(),
+      paymentExpiresAt: _parseDateTime(json['paymentExpiresAt']),
+      expiryMinutes: _toInt(json['expiryMinutes']),
+      instructions: json['instructions'] is Map
+          ? Map<String, dynamic>.from(json['instructions'] as Map)
+          : const {},
+      accountDetails: json['accountDetails'] is Map
+          ? Map<String, dynamic>.from(json['accountDetails'] as Map)
+          : const {},
+      nextStep: json['nextStep'] is Map
+          ? Map<String, dynamic>.from(json['nextStep'] as Map)
+          : const {},
     );
   }
 
-  static String? _firstNonEmpty(
-    Map<String, dynamic> json,
-    List<String> keys,
-  ) {
-    for (final key in keys) {
-      final value = json[key]?.toString().trim();
-      if (value != null && value.isNotEmpty) return value;
-    }
-    return null;
-  }
+  String get instructionsAr => (instructions['ar'] ?? '').toString().trim();
+  String get instructionsEn => (instructions['en'] ?? '').toString().trim();
+
+  String get nextStepAr => (nextStep['ar'] ?? '').toString().trim();
+  String get nextStepEn => (nextStep['en'] ?? '').toString().trim();
+
+  String get normalizedGateway => gateway.trim().toUpperCase();
+  String get normalizedPaymentType => paymentType.trim().toUpperCase();
+
+  bool get hasInstructions => instructionsAr.isNotEmpty || instructionsEn.isNotEmpty;
+  bool get hasNextStep => nextStepAr.isNotEmpty || nextStepEn.isNotEmpty;
+  bool get hasAccountDetails => accountDetails.isNotEmpty;
 }
 
 class PaymentErrorModel {
@@ -364,11 +230,25 @@ class PaymentErrorModel {
     final rawMessage = json['message'];
 
     return PaymentErrorModel(
-      code: (json['code'] ?? '').toString(),
+      code: (json['code'] ?? '').toString().trim(),
       message: rawMessage is Map
           ? Map<String, dynamic>.from(rawMessage)
           : <String, dynamic>{},
-      plainMessage: rawMessage is String ? rawMessage : null,
+      plainMessage: rawMessage is String ? rawMessage.trim() : null,
     );
   }
+}
+
+DateTime? _parseDateTime(dynamic value) {
+  final text = value?.toString().trim() ?? '';
+  if (text.isEmpty) return null;
+
+  final parsed = DateTime.tryParse(text);
+  return parsed?.toLocal();
+}
+
+int _toInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse('${value ?? ''}') ?? 0;
 }

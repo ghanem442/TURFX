@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/network/providers.dart';
+import '../../data/auth_repository_provider.dart';
 import '../../../../core/theme/app_theme.dart';
 
 class ForgotPasswordPage extends ConsumerStatefulWidget {
@@ -20,52 +20,6 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
   void dispose() {
     _emailCtrl.dispose();
     super.dispose();
-  }
-
-  String _extractMessage(dynamic raw) {
-    if (raw is Map) {
-      final error = raw['error'];
-
-      if (error is Map) {
-        final msg = error['message'];
-
-        if (msg is String && msg.trim().isNotEmpty) {
-          return msg.trim();
-        }
-
-        if (msg is Map) {
-          final ar = msg['ar']?.toString().trim();
-          final en = msg['en']?.toString().trim();
-
-          if (ar != null && ar.isNotEmpty) return ar;
-          if (en != null && en.isNotEmpty) return en;
-        }
-
-        if (msg is List && msg.isNotEmpty) {
-          return msg.join('\n');
-        }
-      }
-
-      final message = raw['message'];
-
-      if (message is String && message.trim().isNotEmpty) {
-        return message.trim();
-      }
-
-      if (message is Map) {
-        final ar = message['ar']?.toString().trim();
-        final en = message['en']?.toString().trim();
-
-        if (ar != null && ar.isNotEmpty) return ar;
-        if (en != null && en.isNotEmpty) return en;
-      }
-
-      if (message is List && message.isNotEmpty) {
-        return message.join('\n');
-      }
-    }
-
-    return 'Request failed';
   }
 
   Future<void> _submit() async {
@@ -92,51 +46,46 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
     setState(() => _loading = true);
 
     try {
-      final api = ref.read(apiClientProvider);
-
-      final res = await api.post(
-        'auth/forgot-password',
-        data: {'email': email},
-      );
-
-      final raw = res.data;
-      final statusCode = res.statusCode;
-      final isOk =
-          statusCode != null &&
-          statusCode < 400 &&
-          raw is Map &&
-          (raw['success'] == true || raw['success'] == null);
-
-      final msg = isOk
-          ? _extractMessage(raw).replaceAll('Request failed', '')
-          : _extractMessage(raw);
+      final repo = ref.read(authRepositoryProvider);
+      final res = await repo.forgotPassword(email: email);
 
       if (!mounted) return;
 
-      if (!isOk) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(msg.isEmpty ? 'Failed to send code' : msg)));
+      if (res.success != true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              (res.message ?? '').trim().isNotEmpty
+                  ? res.message!.trim()
+                  : 'Failed to send code',
+            ),
+          ),
+        );
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            msg.isNotEmpty
-                ? msg
-                : 'If an account exists, a reset code has been sent.',
+            (res.message ?? '').trim().isNotEmpty
+                ? res.message!.trim()
+                : 'If an account exists with this email, an OTP has been sent',
           ),
         ),
       );
 
-      await context.push('/reset-password', extra: email);
+      await context.push(
+        '/reset-password',
+        extra: {
+          'email': email,
+        },
+      );
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to send code: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send code: $e')),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }

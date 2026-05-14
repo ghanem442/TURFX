@@ -9,7 +9,10 @@ import '../providers/auth_session_provider.dart';
 class VerifyEmailPage extends ConsumerStatefulWidget {
   final String? email;
 
-  const VerifyEmailPage({super.key, this.email});
+  const VerifyEmailPage({
+    super.key,
+    this.email,
+  });
 
   @override
   ConsumerState<VerifyEmailPage> createState() => _VerifyEmailPageState();
@@ -136,7 +139,9 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
         return;
       }
 
-      _showSnack('Verification completed, but account status is still not verified.');
+      _showSnack(
+        'Verification completed, but account status is still not verified.',
+      );
     } catch (e) {
       _showSnack('Auto verify failed: $e');
     } finally {
@@ -156,7 +161,7 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
       final me = await repo.getCurrentUser();
 
       if (me.success != true) {
-        await session.logout();
+        session.logout();
         if (!mounted) return;
         _showSnack('Session expired. Please log in again.');
         context.go('/login');
@@ -177,7 +182,7 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
       final id = userMap['id']?.toString();
 
       if (email.isEmpty) {
-        await session.logout();
+        session.logout();
         if (!mounted) return;
         _showSnack('Invalid account data. Please log in again.');
         context.go('/login');
@@ -195,14 +200,16 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
       if (!mounted) return;
 
       if (!isVerified) {
-        _showSnack('Your email is not verified yet. Please check your inbox and try again.');
+        _showSnack(
+          'Your email is not verified yet. Please check your inbox and try again.',
+        );
         return;
       }
 
       context.go(_homeRouteForRole(role));
     } catch (e) {
       final session = ref.read(authSessionProvider.notifier);
-      await session.logout();
+      session.logout();
 
       if (!mounted) return;
       _showSnack('Failed to refresh account status. Please log in again.');

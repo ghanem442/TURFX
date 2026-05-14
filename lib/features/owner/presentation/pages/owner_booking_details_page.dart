@@ -48,8 +48,6 @@ class _OwnerBookingDetailsPageState
 
   Future<void> _refreshRelatedData() async {
     await ref.read(ownerBookingsProvider.notifier).forceRefresh();
-    ref.invalidate(ownerWalletProvider);
-    await ref.read(ownerWalletTransactionsProvider.notifier).forceRefresh();
   }
 
   bool _canCancelBooking(BookingModel booking) {

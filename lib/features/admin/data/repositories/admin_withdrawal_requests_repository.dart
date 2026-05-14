@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:football/core/network/api_client.dart';
+import 'package:football/core/network/backend_error_text.dart';
 import '../models/admin_withdrawal_request_model.dart';
 
 class AdminWithdrawalRequestsRepository {
@@ -23,7 +24,7 @@ class AdminWithdrawalRequestsRepository {
 
       final plainMsg = error['message']?.toString();
       if (plainMsg != null && plainMsg.trim().isNotEmpty) {
-        return plainMsg.trim();
+        return humanizeBackendErrorText(plainMsg.trim());
       }
     }
 
@@ -38,7 +39,7 @@ class AdminWithdrawalRequestsRepository {
 
     final plain = message?.toString();
     if (plain != null && plain.trim().isNotEmpty) {
-      return plain.trim();
+      return humanizeBackendErrorText(plain.trim());
     }
 
     return 'Request failed';
@@ -118,7 +119,7 @@ class AdminWithdrawalRequestsRepository {
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -166,7 +167,7 @@ class AdminWithdrawalRequestsRepository {
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -225,7 +226,7 @@ class AdminWithdrawalRequestsRepository {
       if (raw is Map) {
         throw Exception(_extractErrorMessage(Map<String, dynamic>.from(raw)));
       }
-      throw Exception(e.message ?? 'Network error');
+      throw Exception(formatDioFailure(e));
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }

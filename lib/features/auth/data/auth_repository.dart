@@ -233,6 +233,54 @@ class AuthRepository {
     );
   }
 
+  Future<ApiResponse<Map<String, dynamic>>> verifyEmail({
+    required String token,
+  }) {
+    return _postRequest(
+      'auth/verify-email',
+      data: {
+        'token': token.trim(),
+      },
+    );
+  }
+
+  Future<ApiResponse<Map<String, dynamic>>> forgotPassword({
+    required String email,
+  }) {
+    return _postRequest(
+      'auth/forgot-password',
+      data: {
+        'email': email.trim(),
+      },
+    );
+  }
+
+  Future<ApiResponse<Map<String, dynamic>>> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) {
+    return _postRequest(
+      'auth/reset-password',
+      data: {
+        'email': email.trim(),
+        'otp': otp.trim(),
+        'newPassword': newPassword,
+      },
+    );
+  }
+
+  Future<ApiResponse<Map<String, dynamic>>> getDevResetToken({
+    required String email,
+  }) {
+    return _postRequest(
+      'auth/dev/get-reset-token',
+      data: {
+        'email': email.trim(),
+      },
+    );
+  }
+
   Future<ApiResponse<Map<String, dynamic>>> devAutoVerify({
     required String email,
   }) {

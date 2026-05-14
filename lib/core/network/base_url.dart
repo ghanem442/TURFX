@@ -1,50 +1,53 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart';
+/// Default REST base (must end with `/api/v1/` for this app).
+const String _kDefaultApiBaseUrl =
+    'https://ghanem-production.up.railway.app/api/v1/';
 
-const String _hostFromEnv =
-    String.fromEnvironment('API_HOST', defaultValue: '');
+const String _kDefaultApiOrigin = 'https://ghanem-production.up.railway.app';
 
-const int _portFromEnv =
-    int.fromEnvironment('API_PORT', defaultValue: 3000);
-
-String resolveApiBaseUrl() {
-  final host = _hostFromEnv.trim().isNotEmpty ? _hostFromEnv.trim() : null;
-  const port = _portFromEnv;
-
-  if (kIsWeb) {
-    return 'http://${host ?? 'localhost'}:$port/api/v1/';
+String _trimTrailingSlashes(String s) {
+  var out = s.trim();
+  while (out.endsWith('/')) {
+    out = out.substring(0, out.length - 1);
   }
-
-  if (Platform.isAndroid) {
-    final effectiveHost = host ?? '10.0.2.2';
-    return 'http://$effectiveHost:$port/api/v1/';
-  }
-
-  if (Platform.isIOS) {
-    final effectiveHost = host ?? 'localhost';
-    return 'http://$effectiveHost:$port/api/v1/';
-  }
-
-  return 'http://${host ?? 'localhost'}:$port/api/v1/';
+  return out;
 }
 
+/// Full API base URL, e.g. `https://host/api/v1/`.
+///
+/// Compile-time: `--dart-define=API_BASE_URL=https://.../api/v1/`
+/// If only [API_ORIGIN] is set (no path), `/api/v1/` is appended.
+String resolveApiBaseUrl() {
+  const fromBase = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+  final baseTrim = fromBase.trim();
+  if (baseTrim.isNotEmpty) {
+    return baseTrim.endsWith('/') ? baseTrim : '$baseTrim/';
+  }
+
+  const fromOrigin = String.fromEnvironment('API_ORIGIN', defaultValue: '');
+  final originTrim = fromOrigin.trim();
+  if (originTrim.isNotEmpty) {
+    final origin = _trimTrailingSlashes(originTrim);
+    return '$origin/api/v1/';
+  }
+
+  return _kDefaultApiBaseUrl;
+}
+
+/// Public site origin without trailing slash (for links, etc.).
 String resolveApiOrigin() {
-  final host = _hostFromEnv.trim().isNotEmpty ? _hostFromEnv.trim() : null;
-  const port = _portFromEnv;
-
-  if (kIsWeb) {
-    return 'http://${host ?? 'localhost'}:$port';
+  const fromOrigin = String.fromEnvironment('API_ORIGIN', defaultValue: '');
+  final originTrim = fromOrigin.trim();
+  if (originTrim.isNotEmpty) {
+    return _trimTrailingSlashes(originTrim);
   }
 
-  if (Platform.isAndroid) {
-    final effectiveHost = host ?? '10.0.2.2';
-    return 'http://$effectiveHost:$port';
+  const fromBase = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+  final baseTrim = fromBase.trim();
+  if (baseTrim.isNotEmpty) {
+    final normalized = baseTrim.endsWith('/') ? baseTrim : '$baseTrim/';
+    final withoutApi = normalized.replaceFirst(RegExp(r'/api/v1/?$'), '');
+    return _trimTrailingSlashes(withoutApi);
   }
 
-  if (Platform.isIOS) {
-    final effectiveHost = host ?? 'localhost';
-    return 'http://$effectiveHost:$port';
-  }
-
-  return 'http://${host ?? 'localhost'}:$port';
+  return _kDefaultApiOrigin;
 }

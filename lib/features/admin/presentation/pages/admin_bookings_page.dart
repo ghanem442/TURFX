@@ -111,8 +111,13 @@ class _AdminBookingsPageState extends ConsumerState<AdminBookingsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bookings'),
+        title: const Text('Admin Bookings'),
         actions: [
+          IconButton(
+            tooltip: 'Pending Payments',
+            onPressed: () => context.push('/admin/payments'),
+            icon: const Icon(Icons.payments_outlined),
+          ),
           IconButton(
             tooltip: 'Pick date range',
             onPressed: _pickDateRange,
@@ -132,13 +137,47 @@ class _AdminBookingsPageState extends ConsumerState<AdminBookingsPage> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
             child: Column(
               children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withAlpha(18),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Colors.orange.withAlpha(55),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.info_outline, color: Colors.orange),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'Manual payment flow is active. Bookings with Pending Payment may still need screenshot submission or admin review before they become Confirmed.',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: () => context.push('/admin/payments'),
+                        child: const Text('Open Payments'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
                 TextField(
                   controller: _searchController,
                   textInputAction: TextInputAction.search,
                   onSubmitted: notifier.applySearch,
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
-                    hintText: 'Search booking ID, player email, or phone',
+                    hintText:
+                        'Search booking ID, booking code, player email, or phone',
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _searchController.text.trim().isEmpty
                         ? null
@@ -345,6 +384,8 @@ class _BookingCard extends StatelessWidget {
         booking.commissionAmount != null ||
         booking.ownerRevenue != null;
 
+    final needsManualReview = booking.hasManualPaymentReview;
+
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: () {
@@ -358,13 +399,46 @@ class _BookingCard extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
           side: BorderSide(
-            color: theme.colorScheme.outlineVariant.withOpacity(.5),
+            color: theme.colorScheme.outlineVariant.withAlpha(128),
           ),
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
+              if (needsManualReview) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withAlpha(18),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.orange.withAlpha(55),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.pending_actions, color: Colors.orange),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'This booking may require manual payment review.',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => context.push('/admin/payments'),
+                        child: const Text('Payments'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -409,6 +483,20 @@ class _BookingCard extends StatelessWidget {
                           backgroundColor: paymentStyle.$2,
                         ),
                       ],
+                      if ((booking.verificationStatus ?? '').trim().isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        _Badge(
+                          label: _verificationStatusLabel(
+                            booking.verificationStatus!,
+                          ),
+                          color: _verificationColor(
+                            booking.verificationStatus!,
+                          ),
+                          backgroundColor: _verificationColor(
+                            booking.verificationStatus!,
+                          ).withAlpha(28),
+                        ),
+                      ],
                     ],
                   ),
                 ],
@@ -425,6 +513,14 @@ class _BookingCard extends StatelessWidget {
                           ? booking.bookingCode!.trim()
                           : booking.id,
                     ),
+                    if (booking.referenceCode?.trim().isNotEmpty == true) ...[
+                      const SizedBox(height: 10),
+                      _InfoRow(
+                        icon: Icons.confirmation_number_outlined,
+                        title: 'Reference Code',
+                        value: booking.referenceCode!.trim(),
+                      ),
+                    ],
                     if (booking.ownerName?.trim().isNotEmpty == true) ...[
                       const SizedBox(height: 10),
                       _InfoRow(
@@ -487,13 +583,13 @@ class _BookingCard extends StatelessWidget {
                             value: _money(booking.totalPrice ?? 0),
                           ),
                           _FinanceItem(
-                            label: 'Deposit Paid',
+                            label: 'Deposit Required',
                             value: _money(booking.depositAmount ?? 0),
                           ),
                           _FinanceItem(
                             label: 'Cash at Field',
                             value: _money(booking.remainingAmount ?? 0),
-                            helper: 'Outside system',
+                            helper: 'Collected offline',
                           ),
                           _FinanceItem(
                             label: 'App Commission',
@@ -520,6 +616,12 @@ class _BookingCard extends StatelessWidget {
                 title: 'Status Details',
                 child: Column(
                   children: [
+                    _InfoRow(
+                      icon: Icons.payments_outlined,
+                      title: 'Manual Payment State',
+                      value: _manualPaymentSummary(booking),
+                    ),
+                    const SizedBox(height: 10),
                     _InfoRow(
                       icon: Icons.qr_code_2_outlined,
                       title: 'QR Status',
@@ -618,8 +720,8 @@ class _Section extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(
-              .35,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(
+              90,
             ),
         borderRadius: BorderRadius.circular(14),
       ),
@@ -666,7 +768,7 @@ class _FinanceGrid extends StatelessWidget {
                     color: Theme.of(context)
                         .colorScheme
                         .outlineVariant
-                        .withOpacity(.45),
+                        .withAlpha(115),
                   ),
                 ),
                 child: Padding(
@@ -824,7 +926,7 @@ String _statusLabel(String raw) {
 }
 
 String _paymentStatusLabel(String raw) {
-  switch (raw) {
+  switch (raw.toUpperCase()) {
     case 'PENDING':
       return 'Pending';
     case 'PARTIAL':
@@ -835,8 +937,48 @@ String _paymentStatusLabel(String raw) {
       return 'Failed';
     case 'REFUNDED':
       return 'Refunded';
+    case 'APPROVED':
+      return 'Approved';
+    case 'REJECTED':
+      return 'Rejected';
+    case 'EXPIRED':
+      return 'Expired';
+    case 'LOCKED':
+      return 'Under Review';
     default:
       return raw.replaceAll('_', ' ');
+  }
+}
+
+String _verificationStatusLabel(String raw) {
+  switch (raw.toUpperCase()) {
+    case 'PENDING':
+      return 'Pending Review';
+    case 'APPROVED':
+      return 'Approved';
+    case 'REJECTED':
+      return 'Rejected';
+    case 'EXPIRED':
+      return 'Expired';
+    case 'LOCKED':
+      return 'Locked';
+    default:
+      return raw.replaceAll('_', ' ');
+  }
+}
+
+Color _verificationColor(String raw) {
+  switch (raw.toUpperCase()) {
+    case 'PENDING':
+    case 'LOCKED':
+      return Colors.orange;
+    case 'APPROVED':
+      return Colors.green;
+    case 'REJECTED':
+    case 'EXPIRED':
+      return Colors.red;
+    default:
+      return Colors.grey;
   }
 }
 
@@ -867,14 +1009,18 @@ String _paymentStatusLabel(String raw) {
 }
 
 (Color, Color) _paymentStyle(BuildContext context, String? status) {
-  switch (status) {
+  switch ((status ?? '').toUpperCase()) {
     case 'PENDING':
+    case 'LOCKED':
       return (Colors.orange.shade800, Colors.orange.shade100);
     case 'PARTIAL':
       return (Colors.blue.shade800, Colors.blue.shade100);
     case 'COMPLETED':
+    case 'APPROVED':
       return (Colors.green.shade800, Colors.green.shade100);
     case 'FAILED':
+    case 'REJECTED':
+    case 'EXPIRED':
       return (Colors.red.shade800, Colors.red.shade100);
     case 'REFUNDED':
       return (Colors.purple.shade800, Colors.purple.shade100);
@@ -884,6 +1030,58 @@ String _paymentStatusLabel(String raw) {
         Theme.of(context).colorScheme.primaryContainer,
       );
   }
+}
+
+String _manualPaymentSummary(AdminBookingModel booking) {
+  final bookingStatus = booking.status.toUpperCase();
+  final paymentStatus = (booking.paymentStatus ?? '').trim().toUpperCase();
+  final verificationStatus =
+      (booking.verificationStatus ?? '').trim().toUpperCase();
+
+  if (bookingStatus == 'PENDING_PAYMENT') {
+    if (verificationStatus == 'LOCKED') {
+      return 'Screenshot uploaded and currently under admin review';
+    }
+    if (verificationStatus == 'PENDING' || paymentStatus == 'PENDING') {
+      return 'Manual payment submitted and waiting for admin verification';
+    }
+    if (verificationStatus.isNotEmpty) {
+      return 'Verification status: $verificationStatus';
+    }
+    if (paymentStatus.isNotEmpty) {
+      return 'Manual payment status: $paymentStatus';
+    }
+    return 'Booking still waiting for manual payment completion';
+  }
+
+  if (bookingStatus == 'PAYMENT_FAILED') {
+    if (verificationStatus == 'REJECTED') {
+      return 'Manual payment was rejected';
+    }
+    if (verificationStatus == 'EXPIRED') {
+      return 'Manual payment expired before approval';
+    }
+    return 'Payment failed or booking is no longer payable';
+  }
+
+  if (bookingStatus == 'CONFIRMED') {
+    if (verificationStatus == 'APPROVED' ||
+        paymentStatus == 'APPROVED' ||
+        paymentStatus == 'COMPLETED') {
+      return 'Manual payment approved and booking confirmed';
+    }
+    return 'Booking confirmed';
+  }
+
+  if (verificationStatus.isNotEmpty) {
+    return 'Verification status: $verificationStatus';
+  }
+
+  if (paymentStatus.isNotEmpty) {
+    return 'Payment status: $paymentStatus';
+  }
+
+  return 'No manual payment details available';
 }
 
 String _money(double value) {

@@ -150,6 +150,12 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       if (!mounted) return;
 
       if (!verified) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account created successfully. Please verify your email.'),
+          ),
+        );
+
         context.go('/verify-email', extra: email);
         return;
       }

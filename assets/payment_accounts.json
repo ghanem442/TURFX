@@ -1,0 +1,18 @@
+{
+  "VODAFONE_CASH": {
+    "gateway": "VODAFONE_CASH",
+    "isEnabled": true,
+    "mobileNumber": "01234567890",
+    "accountName": "اسم صاحب الحساب",
+    "instructionsAr": "حول المبلغ المطلوب على رقم فودافون كاش الموضح أدناه",
+    "instructionsEn": "Transfer the required amount to the Vodafone Cash number below"
+  },
+  "INSTAPAY": {
+    "gateway": "INSTAPAY",
+    "isEnabled": true,
+    "mobileNumber": "01234567890",
+    "accountName": "اسم صاحب الحساب",
+    "instructionsAr": "حول المبلغ المطلوب على رقم إنستا باي الموضح أدناه",
+    "instructionsEn": "Transfer the required amount to the InstaPay number below"
+  }
+}

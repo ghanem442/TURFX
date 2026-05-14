@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:football/features/owner/presentation/pages/owner_booking_details_page.dart';
 import 'package:football/features/owner/presentation/pages/owner_bulk_time_slots_page.dart';
-import 'package:football/features/owner/presentation/pages/owner_wallet_page.dart';
-import 'package:football/features/owner/presentation/pages/owner_withdrawal_requests_page.dart';
 import 'package:football/features/wallet/presentation/pages/wallet_top_up_page.dart';
 import 'package:go_router/go_router.dart';
 
@@ -13,6 +11,8 @@ import '../../features/admin/presentation/pages/admin_booking_details_page.dart'
 import '../../features/admin/presentation/pages/admin_bookings_page.dart';
 import '../../features/admin/presentation/pages/admin_dashboard_page.dart';
 import '../../features/admin/presentation/pages/admin_fields_page.dart';
+import '../../features/admin/presentation/pages/admin_payments_page.dart';
+import '../../features/admin/presentation/pages/admin_payment_accounts_page.dart';
 import '../../features/admin/presentation/pages/admin_platform_wallet_page.dart';
 import '../../features/admin/presentation/pages/admin_settings_page.dart';
 import '../../features/admin/presentation/pages/admin_users_page.dart';
@@ -58,13 +58,14 @@ final routerRefreshProvider = Provider<ValueNotifier<int>>((ref) {
 });
 
 class AppRouter {
-  static final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+  static final GlobalKey<NavigatorState> rootNavigatorKey =
+      GlobalKey<NavigatorState>(debugLabel: 'root');
 
   static GoRouter router(Ref ref) {
     final refreshListenable = ref.read(routerRefreshProvider);
 
     return GoRouter(
-      navigatorKey: _rootKey,
+      navigatorKey: rootNavigatorKey,
       initialLocation: '/splash',
       refreshListenable: refreshListenable,
       errorBuilder: (context, state) => Scaffold(
@@ -104,8 +105,6 @@ class AppRouter {
         final isOwnerEditSlot = loc == '/owner/field-slots/edit';
         final isOwnerBulkSlots = loc == '/owner/field-slots/bulk';
         final isOwnerCheckIn = loc == '/owner/check-in';
-        final isOwnerWallet = loc == '/owner/wallet';
-        final isOwnerWithdrawalRequests = loc == '/owner/withdrawal-requests';
 
         final isPlayerRoot = loc == '/home';
         final isPlayerBookings = loc == '/my-bookings';
@@ -123,9 +122,7 @@ class AppRouter {
             isOwnerFieldSlots ||
             isOwnerEditSlot ||
             isOwnerBulkSlots ||
-            isOwnerCheckIn ||
-            isOwnerWallet ||
-            isOwnerWithdrawalRequests;
+            isOwnerCheckIn;
 
         if (loc == '/booking-confirmation' && state.extra == null) {
           return '/home';
@@ -143,12 +140,7 @@ class AppRouter {
         final isAuthed = authStatus == AuthStatus.authenticated;
 
         final isPublicAuthRoute =
-            isSplash ||
-            isLogin ||
-            isRegister ||
-            isForgot ||
-            isReset ||
-            isVerify;
+            isSplash || isLogin || isRegister || isForgot || isReset || isVerify;
 
         if (!isAuthed) {
           return isPublicAuthRoute ? null : '/login';
@@ -215,6 +207,29 @@ class AppRouter {
               _buildPage(key: state.pageKey, child: const ForgotPasswordPage()),
         ),
         GoRoute(
+          path: '/reset-password',
+          pageBuilder: (context, state) {
+            final extra = state.extra;
+            String? email;
+            String? otp;
+
+            if (extra is Map<String, dynamic>) {
+              email = extra['email']?.toString();
+              otp = extra['otp']?.toString();
+            } else if (extra is String) {
+              email = extra;
+            }
+
+            return _buildPage(
+              key: state.pageKey,
+              child: ResetPasswordPage(
+                email: email,
+                otp: otp,
+              ),
+            );
+          },
+        ),
+        GoRoute(
           path: '/admin/withdrawal-requests',
           pageBuilder: (context, state) => _buildPage(
             key: state.pageKey,
@@ -227,28 +242,16 @@ class AppRouter {
               _buildPage(key: state.pageKey, child: const AdminAccountPage()),
         ),
         GoRoute(
-          path: '/reset-password',
-          pageBuilder: (context, state) {
-            final token = state.uri.queryParameters['token'];
-            final emailFromExtra = state.extra as String?;
-            final emailFromQuery = state.uri.queryParameters['email'];
-            return _buildPage(
-              key: state.pageKey,
-              child: ResetPasswordPage(
-                email: emailFromExtra ?? emailFromQuery,
-                token: token,
-              ),
-            );
-          },
-        ),
-        GoRoute(
           path: '/verify-email',
           pageBuilder: (context, state) {
             final emailFromExtra = state.extra as String?;
             final emailFromQuery = state.uri.queryParameters['email'];
+
             return _buildPage(
               key: state.pageKey,
-              child: VerifyEmailPage(email: emailFromExtra ?? emailFromQuery),
+              child: VerifyEmailPage(
+                email: emailFromExtra ?? emailFromQuery,
+              ),
             );
           },
         ),
@@ -305,6 +308,16 @@ class AppRouter {
           },
         ),
         GoRoute(
+          path: '/admin/payments',
+          pageBuilder: (context, state) =>
+              _buildPage(key: state.pageKey, child: const AdminPaymentsPage()),
+        ),
+        GoRoute(
+          path: '/admin/payment-accounts',
+          pageBuilder: (context, state) =>
+              _buildPage(key: state.pageKey, child: const AdminPaymentAccountsPage()),
+        ),
+        GoRoute(
           path: '/admin/settings',
           pageBuilder: (context, state) =>
               _buildPage(key: state.pageKey, child: const AdminSettingsPage()),
@@ -322,13 +335,13 @@ class AppRouter {
           ),
         ),
         GoRoute(
-          parentNavigatorKey: _rootKey,
+          parentNavigatorKey: rootNavigatorKey,
           path: '/owner/add-field',
           pageBuilder: (context, state) =>
               _buildPage(key: state.pageKey, child: const AddFieldPage()),
         ),
         GoRoute(
-          parentNavigatorKey: _rootKey,
+          parentNavigatorKey: rootNavigatorKey,
           path: '/owner/edit-field',
           pageBuilder: (context, state) {
             final field = state.extra as FieldModel?;
@@ -349,7 +362,7 @@ class AppRouter {
           },
         ),
         GoRoute(
-          parentNavigatorKey: _rootKey,
+          parentNavigatorKey: rootNavigatorKey,
           path: '/owner/field-slots',
           pageBuilder: (context, state) {
             final extra = state.extra;
@@ -382,7 +395,7 @@ class AppRouter {
           },
         ),
         GoRoute(
-          parentNavigatorKey: _rootKey,
+          parentNavigatorKey: rootNavigatorKey,
           path: '/owner/field-slots/edit',
           pageBuilder: (context, state) {
             final extra = state.extra;
@@ -422,7 +435,7 @@ class AppRouter {
           },
         ),
         GoRoute(
-          parentNavigatorKey: _rootKey,
+          parentNavigatorKey: rootNavigatorKey,
           path: '/owner/bookings',
           pageBuilder: (context, state) {
             final extra = state.extra;
@@ -444,7 +457,7 @@ class AppRouter {
           },
         ),
         GoRoute(
-          parentNavigatorKey: _rootKey,
+          parentNavigatorKey: rootNavigatorKey,
           path: '/owner/bookings/:id',
           pageBuilder: (context, state) {
             final id = state.pathParameters['id']!;
@@ -466,7 +479,7 @@ class AppRouter {
           builder: (context, state) => const WalletTopUpPage(),
         ),
         GoRoute(
-          parentNavigatorKey: _rootKey,
+          parentNavigatorKey: rootNavigatorKey,
           path: '/owner/check-in',
           pageBuilder: (context, state) {
             final extra = state.extra;
@@ -492,20 +505,6 @@ class AppRouter {
               ),
             );
           },
-        ),
-        GoRoute(
-          parentNavigatorKey: _rootKey,
-          path: '/owner/wallet',
-          pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const OwnerWalletPage()),
-        ),
-        GoRoute(
-          parentNavigatorKey: _rootKey,
-          path: '/owner/withdrawal-requests',
-          pageBuilder: (context, state) => _buildPage(
-            key: state.pageKey,
-            child: const OwnerWithdrawalRequestsPage(),
-          ),
         ),
         StatefulShellRoute.indexedStack(
           builder: (context, state, navigationShell) {
@@ -555,7 +554,7 @@ class AppRouter {
           ],
         ),
         GoRoute(
-          parentNavigatorKey: _rootKey,
+          parentNavigatorKey: rootNavigatorKey,
           path: '/field/:id',
           pageBuilder: (context, state) {
             final id = state.pathParameters['id']!;
@@ -570,7 +569,7 @@ class AppRouter {
           },
         ),
         GoRoute(
-          parentNavigatorKey: _rootKey,
+          parentNavigatorKey: rootNavigatorKey,
           path: '/booking/choose-time',
           pageBuilder: (context, state) {
             final field = state.extra as FieldModel?;
@@ -584,7 +583,7 @@ class AppRouter {
           },
         ),
         GoRoute(
-          parentNavigatorKey: _rootKey,
+          parentNavigatorKey: rootNavigatorKey,
           path: '/owner/field-slots/bulk',
           pageBuilder: (context, state) {
             final extra = state.extra;
@@ -622,7 +621,7 @@ class AppRouter {
           },
         ),
         GoRoute(
-          parentNavigatorKey: _rootKey,
+          parentNavigatorKey: rootNavigatorKey,
           path: '/booking-confirmation',
           pageBuilder: (context, state) {
             final args = state.extra as BookingConfirmationArgs?;
@@ -633,7 +632,7 @@ class AppRouter {
           },
         ),
         GoRoute(
-          parentNavigatorKey: _rootKey,
+          parentNavigatorKey: rootNavigatorKey,
           path: '/booking/:id/qr',
           pageBuilder: (context, state) {
             final id = state.pathParameters['id']!;

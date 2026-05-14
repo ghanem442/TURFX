@@ -3,7 +3,8 @@ import 'package:football/core/network/providers.dart';
 
 import '../repositories/admin_bookings_repository.dart';
 
-final adminBookingsRepositoryProvider = Provider<AdminBookingsRepository>((ref) {
-  final api = ref.read(apiClientProvider);
+final adminBookingsRepositoryProvider =
+    Provider<AdminBookingsRepository>((ref) {
+  final api = ref.watch(apiClientProvider);
   return AdminBookingsRepository(api);
 });

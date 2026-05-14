@@ -251,6 +251,14 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
                 fontWeight: FontWeight.w900,
               ),
             ),
+            const SizedBox(height: 6),
+            Text(
+              'بعد اختيار المعاد هيتم إنشاء الحجز، وبعدها هتختار وسيلة الدفع اليدوي وترفع إثبات التحويل.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 10),
             slotsAsync.when(
               loading: () => const Padding(
@@ -280,7 +288,9 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
                   ..sort((a, b) => a.start.compareTo(b.start));
 
                 if (_selectedTimeSlotId != null &&
-                    !sorted.any((s) => s.id == _selectedTimeSlotId && s.isAvailable)) {
+                    !sorted.any(
+                      (s) => s.id == _selectedTimeSlotId && s.isAvailable,
+                    )) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted) {
                       setState(() => _selectedTimeSlotId = null);
@@ -319,7 +329,8 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
                         ? Colors.black38
                         : selected
                             ? Colors.white
-                            : (theme.textTheme.bodyMedium?.color ?? Colors.black);
+                            : (theme.textTheme.bodyMedium?.color ??
+                                Colors.black);
 
                     return InkWell(
                       onTap: (!s.isAvailable || _creating)

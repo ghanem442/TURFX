@@ -56,8 +56,6 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
 
   Future<void> _refreshAfterSuccess() async {
     await ref.read(ownerBookingsProvider.notifier).forceRefresh();
-    ref.invalidate(ownerWalletProvider);
-    await ref.read(ownerWalletTransactionsProvider.notifier).forceRefresh();
   }
 
   Future<void> _verifyBookingId() async {
