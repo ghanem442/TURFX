@@ -53,15 +53,17 @@ final bookingQrProvider =
 final bookingQrEligibilityProvider =
     Provider.family<BookingQrEligibility, BookingModel>((ref, booking) {
   if (booking.isConfirmed) {
-    return const BookingQrEligibility(
+    return BookingQrEligibility(
       canShowQr: true,
-      isUsed: false,
-      message: 'QR is available for this confirmed booking.',
+      isUsed: booking.qrIsUsed,
+      message: booking.qrIsUsed
+          ? 'This QR has already been used at check-in.'
+          : 'QR is available for this confirmed booking.',
     );
   }
 
   if (booking.isCheckedInStatus) {
-    return const BookingQrEligibility(
+    return BookingQrEligibility(
       canShowQr: true,
       isUsed: true,
       message: 'This booking has already been checked in.',
@@ -69,6 +71,18 @@ final bookingQrEligibilityProvider =
   }
 
   if (booking.isPendingPayment) {
+    final paymentStatus = (booking.paymentStatus ?? '').trim().toUpperCase();
+    if (paymentStatus == 'APPROVED' ||
+        paymentStatus == 'COMPLETED' ||
+        paymentStatus == 'VERIFIED') {
+      return const BookingQrEligibility(
+        canShowQr: true,
+        isUsed: false,
+        message:
+            'Payment approved — refresh if QR does not appear yet, or open Show QR.',
+      );
+    }
+
     return const BookingQrEligibility(
       canShowQr: false,
       isUsed: false,

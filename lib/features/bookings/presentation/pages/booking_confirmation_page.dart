@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:football/core/network/media_url.dart';
 import 'package:football/core/theme/app_theme.dart';
 import 'package:football/features/bookings/data/bookings_api.dart';
 import 'package:football/features/fields/data/models/field_model.dart';
@@ -68,6 +69,7 @@ class _BookingConfirmationPageState
     extends ConsumerState<BookingConfirmationPage>
     with WidgetsBindingObserver {
   Timer? _timer;
+  Timer? _paymentPollTimer;
   Duration? _remaining;
 
   bool _paying = false;
@@ -126,9 +128,38 @@ class _BookingConfirmationPageState
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        _paymentResult != null &&
+        _paymentResult!.paymentId.trim().isNotEmpty) {
+      _refreshVerificationStatus(silent: true);
+    }
+  }
+
+  void _startPaymentStatusPolling() {
+    _paymentPollTimer?.cancel();
+    _paymentPollTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) {
+        if (!mounted) return;
+        if (_paymentResult == null || _paymentResult!.paymentId.trim().isEmpty) {
+          return;
+        }
+        _refreshVerificationStatus(silent: true);
+      },
+    );
+  }
+
+  void _stopPaymentStatusPolling() {
+    _paymentPollTimer?.cancel();
+    _paymentPollTimer = null;
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _stopPaymentStatusPolling();
     _notesController.dispose();
     _transactionIdController.dispose();
     _senderNumberController.dispose();
@@ -217,6 +248,7 @@ class _BookingConfirmationPageState
       });
 
       await _refreshVerificationStatus(silent: true);
+      _startPaymentStatusPolling();
     } finally {
       if (mounted) {
         setState(() => _restoringStoredPayment = false);
@@ -322,6 +354,8 @@ class _BookingConfirmationPageState
         paymentId: result.paymentId,
       );
 
+      _startPaymentStatusPolling();
+
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -398,6 +432,7 @@ class _BookingConfirmationPageState
         );
 
       await _refreshVerificationStatus();
+      _startPaymentStatusPolling();
     } catch (e) {
       if (!mounted) return;
       final msg = _errorMessageAr(e);
@@ -482,14 +517,26 @@ class _BookingConfirmationPageState
         }
       }
 
+      if (verificationStatus == 'REJECTED' ||
+          verificationStatus == 'EXPIRED' ||
+          bookingStatus == 'PAYMENT_FAILED') {
+        _stopPaymentStatusPolling();
+      }
+
       if (bookingStatus == 'CONFIRMED') {
+        _stopPaymentStatusPolling();
         await ref.read(walletProvider.notifier).refreshWallet();
+        ref.invalidate(bookingQrProvider(bookingId));
 
         if (!mounted || silent) return;
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            const SnackBar(content: Text('تم قبول الدفع وتأكيد الحجز بنجاح')),
+            const SnackBar(
+              content: Text(
+                'تم قبول الدفع وتأكيد الحجز — يمكنك عرض الـ QR الآن',
+              ),
+            ),
           );
       } else if (verificationStatus == 'PENDING' ||
           verificationStatus == 'LOCKED') {
@@ -1587,38 +1634,10 @@ class _BookingConfirmationPageState
   }
 
   String _resolveQrUrl(String imageUrl) {
-    final raw = imageUrl.trim();
-    if (raw.isEmpty) return '';
-
-    if (kDebugMode) {
-      debugPrint('[QR] raw imageUrl=$raw');
+    final resolved = resolvePublicMediaUrl(imageUrl);
+    if (kDebugMode && imageUrl.trim().isNotEmpty) {
+      debugPrint('[QR] raw imageUrl=${imageUrl.trim()} -> $resolved');
     }
-
-    if (kIsWeb) {
-      final resolved = raw
-          .replaceAll('http://10.0.2.2:3000', 'http://localhost:3000')
-          .replaceAll('http://127.0.0.1:3000', 'http://localhost:3000');
-
-      if (kDebugMode) {
-        debugPrint('[QR] resolved web imageUrl=$resolved');
-      }
-
-      return resolved;
-    }
-
-    const backendOrigin = String.fromEnvironment(
-      'API_ORIGIN',
-      defaultValue: 'http://10.0.2.2:3000',
-    );
-
-    final resolved = raw
-        .replaceAll('http://localhost:3000', backendOrigin)
-        .replaceAll('http://127.0.0.1:3000', backendOrigin);
-
-    if (kDebugMode) {
-      debugPrint('[QR] resolved mobile imageUrl=$resolved');
-    }
-
     return resolved;
   }
 

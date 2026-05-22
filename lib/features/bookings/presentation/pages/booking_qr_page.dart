@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:football/core/network/media_url.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/booking_model.dart';
@@ -230,14 +231,7 @@ class BookingQrPage extends ConsumerWidget {
   }
 
   static String _normalizeQrUrl(String raw) {
-    if (raw.isEmpty) return '';
-
-    const backendOrigin = String.fromEnvironment(
-      'API_ORIGIN',
-      defaultValue: 'http://10.0.2.2:3000',
-    );
-
-    return raw.replaceAll('http://localhost:3000', backendOrigin);
+    return resolvePublicMediaUrl(raw);
   }
 
   static Widget _qrFallbackBox({required String message}) {

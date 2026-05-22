@@ -1,3 +1,5 @@
+import 'package:football/core/network/media_url.dart';
+
 class BookingModel {
   final String id;
   final String bookingNumber;
@@ -223,23 +225,28 @@ class BookingModel {
   bool get isUpcoming =>
       isConfirmed || isPendingPayment || isCheckedInStatus;
 
+  /// True when the API (or nested `qr`) indicates a QR exists or can be fetched.
+  bool get hasQrPayload {
+    if (hasQr) return true;
+    if ((qrToken ?? '').trim().isNotEmpty) return true;
+    if ((qrImageUrl ?? '').trim().isNotEmpty) return true;
+    return false;
+  }
+
+  /// Player may open the QR screen after payment is confirmed (no narrow time window).
   bool get canShowQr {
-    if (!hasQr) return false;
-
-    final hasValidQr =
-        qrToken != null || (qrImageUrl ?? '').trim().isNotEmpty;
-    if (!hasValidQr) return false;
-
     if (statusUpper != 'CONFIRMED' && statusUpper != 'CHECKED_IN') {
       return false;
     }
+    if (isCancelled || isExpired) return false;
+    return true;
+  }
 
+  /// Owner check-in window: within 60 minutes before start until 120 minutes after.
+  bool get isWithinQrCheckInWindow {
     final now = DateTime.now();
     final diff = scheduledStart.difference(now).inMinutes;
-
-    if (diff > 60 || diff < -120) return false;
-
-    return true;
+    return diff <= 60 && diff >= -120;
   }
 
   bool get canCancel => canCancelFromApi;
@@ -347,9 +354,13 @@ class BookingModel {
       isCheckedIn: (json['isCheckedIn'] ?? false) == true ||
           parsedStatus == 'CHECKED_IN',
       checkedInAt: _asNullableDateTime(json['checkedInAt']),
-      hasQr: (json['hasQr'] ?? false) == true,
+      hasQr: (json['hasQr'] ?? false) == true ||
+          (parsedQrToken?.trim().isNotEmpty ?? false) ||
+          (parsedQrImageUrl?.trim().isNotEmpty ?? false),
       qrToken: parsedQrToken ?? json['qrToken']?.toString(),
-      qrImageUrl: parsedQrImageUrl ?? json['qrImageUrl']?.toString(),
+      qrImageUrl: resolvePublicMediaUrl(
+        parsedQrImageUrl ?? json['qrImageUrl']?.toString() ?? '',
+      ),
       qrIsUsed: parsedQrIsUsed || (json['qrIsUsed'] ?? false) == true,
       paymentDeadline: _asNullableDateTime(json['paymentDeadline']),
       cancellationDeadline: _asNullableDateTime(json['cancellationDeadline']),
@@ -379,7 +390,9 @@ class QrCodeModel {
   factory QrCodeModel.fromJson(Map<String, dynamic> json) {
     return QrCodeModel(
       qrToken: (json['qrToken'] ?? json['token'] ?? '').toString(),
-      imageUrl: (json['imageUrl'] ?? '').toString(),
+      imageUrl: resolvePublicMediaUrl(
+        (json['imageUrl'] ?? json['url'] ?? '').toString(),
+      ),
       isUsed: (json['isUsed'] ?? false) == true,
       usedAt: json['usedAt'] == null
           ? null

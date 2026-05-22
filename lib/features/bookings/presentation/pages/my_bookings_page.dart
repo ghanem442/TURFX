@@ -204,11 +204,7 @@ class _MyBookingsPageState extends ConsumerState<MyBookingsPage>
   }
 
   bool _shouldShowQr(BookingModel booking) {
-    final status = booking.statusUpper;
-    if (status != 'CONFIRMED' && status != 'CHECKED_IN') {
-      return false;
-    }
-    return booking.canShowQr;
+    return ref.read(bookingQrEligibilityProvider(booking)).canShowQr;
   }
 
   bool _shouldShowContinuePayment(BookingModel booking) {
