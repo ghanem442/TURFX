@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:football/core/widgets/app_button.dart';
 import 'package:football/features/bookings/data/models/booking_model.dart';
 import 'package:football/features/owner/data/owner_repository.dart';
 import 'package:football/features/owner/presentation/providers/owner_providers.dart';
@@ -24,7 +25,6 @@ class _OwnerBookingDetailsPageState
     extends ConsumerState<OwnerBookingDetailsPage> {
   late Future<BookingModel> _future;
 
-  bool _cancelling = false;
   OwnerCancelBookingResult? _lastCancelResult;
 
   @override
@@ -67,7 +67,6 @@ class _OwnerBookingDetailsPageState
   }
 
   Future<void> _cancelBooking(BookingModel booking) async {
-    if (_cancelling) return;
     if (!_canCancelBooking(booking)) return;
 
     final reasonController = TextEditingController();
@@ -113,8 +112,6 @@ class _OwnerBookingDetailsPageState
       reasonController.dispose();
       return;
     }
-
-    setState(() => _cancelling = true);
 
     try {
       final result = await ref.read(ownerRepositoryProvider).cancelBooking(
@@ -166,9 +163,6 @@ class _OwnerBookingDetailsPageState
         );
     } finally {
       reasonController.dispose();
-      if (mounted) {
-        setState(() => _cancelling = false);
-      }
     }
   }
 
@@ -535,24 +529,15 @@ class _OwnerBookingDetailsPageState
                   ),
                 if (booking.status.toUpperCase() == 'CONFIRMED')
                   const SizedBox(height: 12),
-                FilledButton.tonalIcon(
-                  onPressed: canCancel && !_cancelling
-                      ? () => _cancelBooking(booking)
+                AppButton(
+                  text: canCancel
+                      ? 'Cancel Booking'
+                      : 'Booking Cannot Be Cancelled',
+                  icon: Icons.cancel_outlined,
+                  color: canCancel ? Colors.red : null,
+                  onPressed: canCancel
+                      ? () async => _cancelBooking(booking)
                       : null,
-                  icon: _cancelling
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.cancel_outlined),
-                  label: Text(
-                    _cancelling
-                        ? 'Cancelling...'
-                        : canCancel
-                            ? 'Cancel Booking'
-                            : 'Booking Cannot Be Cancelled',
-                  ),
                 ),
                 if (_lastCancelResult != null) ...[
                   const SizedBox(height: 12),

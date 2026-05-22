@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:football/core/network/providers.dart';
 import 'package:football/features/bookings/data/booking_repository.dart';
-import 'package:football/features/bookings/data/bookings_api.dart';
 
 import '../../data/models/booking_model.dart';
 import '../../data/models/bookings_list_result_model.dart';
 import '../../data/models/cancel_booking_result_model.dart';
+import '../../data/models/manual_payment_info_model.dart';
 import '../../data/models/payment_result_model.dart';
+import '../../data/models/payment_upload_result_model.dart';
+import '../../data/models/payment_verification_status_model.dart';
 import '../../data/models/time_slot_model.dart';
 
 final bookingsRepositoryProvider = Provider<BookingsRepository>((ref) {
@@ -29,13 +31,6 @@ final timeSlotsProvider =
   );
 
   return slots;
-});
-
-final createBookingProvider =
-    FutureProvider.family<BookingModel, String>((ref, timeSlotId) async {
-  final repo = ref.watch(bookingsRepositoryProvider);
-  final booking = await repo.createBooking(timeSlotId: timeSlotId);
-  return booking;
 });
 
 final bookingByIdProvider =
@@ -63,8 +58,8 @@ final bookingQrEligibilityProvider =
   }
 
   if (booking.isCheckedInStatus) {
-    return BookingQrEligibility(
-      canShowQr: true,
+    return const BookingQrEligibility(
+      canShowQr: false,
       isUsed: true,
       message: 'This booking has already been checked in.',
     );
@@ -170,35 +165,11 @@ final initiateWalletPaymentProvider =
   },
 );
 
-final uploadPaymentScreenshotProvider = FutureProvider.family<
-    PaymentUploadResultModel,
-    UploadPaymentScreenshotParams>((ref, params) async {
-  final repo = ref.watch(bookingsRepositoryProvider);
-  return repo.uploadPaymentScreenshot(
-    paymentId: params.paymentId,
-    screenshotFile: params.screenshotFile,
-    notes: params.notes,
-    transactionId: params.transactionId,
-    senderNumber: params.senderNumber,
-  );
-});
-
 final paymentVerificationStatusProvider =
     FutureProvider.family<PaymentVerificationStatusModel, String>(
   (ref, paymentId) async {
     final repo = ref.watch(bookingsRepositoryProvider);
     return repo.getVerificationStatus(paymentId: paymentId);
-  },
-);
-
-final cancelBookingProvider =
-    FutureProvider.family<CancelBookingResultModel, CancelBookingParams>(
-  (ref, p) async {
-    final repo = ref.watch(bookingsRepositoryProvider);
-    return repo.cancelBooking(
-      bookingId: p.bookingId,
-      reason: p.reason,
-    );
   },
 );
 
@@ -215,6 +186,98 @@ final myBookingsProvider =
     limit: q.limit,
   );
 });
+
+// ── AsyncNotifiers for mutations ───────────────────────────
+
+class CreateBookingNotifier extends AutoDisposeAsyncNotifier<BookingModel> {
+  @override
+  Future<BookingModel> build() async {
+    throw UnimplementedError('Call create() instead of watching this provider');
+  }
+
+  Future<BookingModel> create(String timeSlotId) async {
+    state = const AsyncLoading();
+    try {
+      final repo = ref.read(bookingsRepositoryProvider);
+      final result = await repo.createBooking(timeSlotId: timeSlotId);
+      state = AsyncValue.data(result);
+      return result;
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+      rethrow;
+    }
+  }
+}
+
+final createBookingProvider =
+    AutoDisposeAsyncNotifierProvider<CreateBookingNotifier, BookingModel>(
+  CreateBookingNotifier.new,
+);
+
+class CancelBookingNotifier
+    extends AutoDisposeAsyncNotifier<CancelBookingResultModel> {
+  @override
+  Future<CancelBookingResultModel> build() async {
+    throw UnimplementedError('Call cancel() instead of watching this provider');
+  }
+
+  Future<CancelBookingResultModel> cancel(CancelBookingParams params) async {
+    state = const AsyncLoading();
+    try {
+      final repo = ref.read(bookingsRepositoryProvider);
+      final result = await repo.cancelBooking(
+        bookingId: params.bookingId,
+        reason: params.reason,
+      );
+      state = AsyncValue.data(result);
+      return result;
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+      rethrow;
+    }
+  }
+}
+
+final cancelBookingProvider =
+    AutoDisposeAsyncNotifierProvider<CancelBookingNotifier,
+        CancelBookingResultModel>(
+  CancelBookingNotifier.new,
+);
+
+class UploadPaymentScreenshotNotifier
+    extends AutoDisposeAsyncNotifier<PaymentUploadResultModel> {
+  @override
+  Future<PaymentUploadResultModel> build() async {
+    throw UnimplementedError('Call upload() instead of watching this provider');
+  }
+
+  Future<PaymentUploadResultModel> upload(
+    UploadPaymentScreenshotParams params,
+  ) async {
+    state = const AsyncLoading();
+    try {
+      final repo = ref.read(bookingsRepositoryProvider);
+      final result = await repo.uploadPaymentScreenshot(
+        paymentId: params.paymentId,
+        screenshotFile: params.screenshotFile,
+        notes: params.notes,
+        transactionId: params.transactionId,
+        senderNumber: params.senderNumber,
+      );
+      state = AsyncValue.data(result);
+      return result;
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+      rethrow;
+    }
+  }
+}
+
+final uploadPaymentScreenshotProvider =
+    AutoDisposeAsyncNotifierProvider<UploadPaymentScreenshotNotifier,
+        PaymentUploadResultModel>(
+  UploadPaymentScreenshotNotifier.new,
+);
 
 class ManualPaymentInitParams {
   final String bookingId;

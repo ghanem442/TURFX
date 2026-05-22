@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:football/core/theme/app_theme.dart';
+import 'package:football/core/utils/error_utils.dart';
+import 'package:football/core/widgets/app_button.dart';
 import 'package:football/features/fields/data/models/field_model.dart';
 import 'package:football/features/fields/presentation/providers/fields_providers.dart';
+import 'package:football/core/routing/app_navigation.dart';
 import 'package:go_router/go_router.dart';
 
 class FieldDetailsPage extends ConsumerStatefulWidget {
@@ -25,14 +28,6 @@ class _FieldDetailsPageState extends ConsumerState<FieldDetailsPage> {
     super.dispose();
   }
 
-  void _handleBack(BuildContext context) {
-    if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go('/home');
-    }
-  }
-
   Future<void> _refresh() async {
     ref.invalidate(fieldByIdProvider(widget.fieldId));
     await Future<void>.delayed(const Duration(milliseconds: 150));
@@ -49,7 +44,7 @@ class _FieldDetailsPageState extends ConsumerState<FieldDetailsPage> {
         pageCtrl: _pageCtrl,
         pageIndex: _pageIndex,
         onPageChanged: (i) => setState(() => _pageIndex = i),
-        onBack: () => _handleBack(context),
+        onBack: () => context.safePop(),
         onRefresh: _refresh,
       );
     }
@@ -59,7 +54,7 @@ class _FieldDetailsPageState extends ConsumerState<FieldDetailsPage> {
         title: const Text('Field Details'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => _handleBack(context),
+          onPressed: () => context.safePop(),
         ),
         actions: [
           IconButton(
@@ -98,16 +93,21 @@ class _FieldDetailsPageState extends ConsumerState<FieldDetailsPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                e.toString(),
+                friendlyErrorMessage(e),
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.grey),
               ),
               const SizedBox(height: 12),
               Center(
-                child: ElevatedButton(
-                  onPressed: () =>
-                      ref.invalidate(fieldByIdProvider(widget.fieldId)),
-                  child: const Text('Retry'),
+                child: AppButton(
+                  text: 'Retry',
+                  width: 140,
+                  onPressed: () async {
+                    ref.invalidate(fieldByIdProvider(widget.fieldId));
+                    await Future<void>.delayed(
+                      const Duration(seconds: 2),
+                    );
+                  },
                 ),
               ),
             ],
@@ -117,7 +117,7 @@ class _FieldDetailsPageState extends ConsumerState<FieldDetailsPage> {
             pageCtrl: _pageCtrl,
             pageIndex: _pageIndex,
             onPageChanged: (i) => setState(() => _pageIndex = i),
-            onBack: () => _handleBack(context),
+            onBack: () => context.safePop(),
             onRefresh: _refresh,
           ),
         ),
@@ -209,7 +209,7 @@ class _FieldDetailsScaffold extends StatelessWidget {
                 ),
               ),
               onPressed: () {
-                context.push('/booking/choose-time', extra: field);
+                context.push('/booking/choose-time/${field.id}');
               },
               child: const Text(
                 'Book Now',

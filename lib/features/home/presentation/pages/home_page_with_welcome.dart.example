@@ -1,0 +1,93 @@
+// EXAMPLE: How to integrate welcome animation into home_page.dart
+// Copy the relevant parts to your actual home_page.dart
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:football/core/services/welcome_service.dart';
+import 'package:football/features/auth/presentation/providers/auth_session_provider.dart';
+
+class HomePage extends ConsumerStatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  ConsumerState<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends ConsumerState<HomePage> {
+  bool _welcomeShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Show welcome animation after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showWelcomeIfNeeded();
+    });
+  }
+
+  Future<void> _showWelcomeIfNeeded() async {
+    // Prevent multiple calls
+    if (_welcomeShown) return;
+    _welcomeShown = true;
+
+    // Get current user
+    final user = ref.read(authUserProvider);
+    
+    // Show welcome if user is logged in
+    if (user != null && mounted) {
+      await WelcomeService.showWelcomeAnimation(
+        context,
+        userName: user.name ?? 'User',
+        userRole: user.role ?? 'PLAYER',
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Your existing build code...
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Home'),
+        // Add test button in development (remove in production)
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.celebration),
+            tooltip: 'Test Welcome',
+            onPressed: () async {
+              await WelcomeService.resetWelcomeCooldown();
+              await WelcomeService.forceShowWelcome(
+                context,
+                userName: 'Test User',
+                userRole: 'PLAYER', // Change to test different roles
+              );
+            },
+          ),
+        ],
+      ),
+      body: const Center(
+        child: Text('Home Page Content'),
+      ),
+    );
+  }
+}
+
+// ALTERNATIVE: Show after login in login_page.dart
+/*
+// In your login success handler:
+if (loginSuccess && mounted) {
+  // Navigate to home
+  context.go('/home');
+  
+  // Show welcome animation
+  await Future.delayed(const Duration(milliseconds: 300));
+  if (mounted) {
+    await WelcomeService.showWelcomeAnimation(
+      context,
+      userName: userName,
+      userRole: userRole,
+    );
+  }
+}
+*/

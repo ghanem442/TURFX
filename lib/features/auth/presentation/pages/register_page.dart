@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/widgets/app_button.dart';
 import '../../data/auth_repository_provider.dart';
 import '../providers/auth_session_provider.dart';
 
@@ -18,7 +19,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
 
-  bool _loading = false;
   bool _obscure1 = true;
   bool _obscure2 = true;
 
@@ -75,18 +75,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     };
   }
 
-  String _homeRouteForRole(String? role) {
-    final normalized = (role ?? '').trim().toUpperCase();
-
-    if (normalized == 'ADMIN') return '/admin/dashboard';
-    if (normalized == 'FIELD_OWNER') return '/owner';
-
-    return '/home';
-  }
-
   Future<void> _onRegister() async {
-    if (_loading) return;
-
     FocusScope.of(context).unfocus();
 
     final err = _validate();
@@ -96,8 +85,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       );
       return;
     }
-
-    setState(() => _loading = true);
 
     try {
       final repo = ref.read(authRepositoryProvider);
@@ -145,7 +132,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       session.setUserFromAuthResponse(data);
 
       final verified = ref.read(authIsVerifiedProvider);
-      final role = ref.read(authUserProvider)?.role ?? _selectedRole;
 
       if (!mounted) return;
 
@@ -155,21 +141,14 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             content: Text('Account created successfully. Please verify your email.'),
           ),
         );
-
-        context.go('/verify-email', extra: email);
-        return;
       }
 
-      context.go(_homeRouteForRole(role));
+      session.markAuthenticated();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
     }
   }
 
@@ -302,16 +281,12 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                   ),
                 ),
               ),
-              onSubmitted: (_) {
-                if (!_loading) {
-                  _onRegister();
-                }
-              },
+              onSubmitted: (_) => _onRegister(),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loading ? null : _onRegister,
-              child: Text(_loading ? 'Creating...' : 'Create Account'),
+            AppButton(
+              text: 'Create Account',
+              onPressed: _onRegister,
             ),
             const SizedBox(height: 12),
             TextButton(

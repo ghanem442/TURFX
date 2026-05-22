@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:football/core/errors/api_exception.dart';
 import 'package:football/core/network/api_client.dart';
 import 'package:football/core/network/models/bilingual_message.dart';
 import 'package:football/core/network/models/fields_response.dart';
@@ -16,21 +17,27 @@ class FieldsRepository {
     int limit = 10,
     String? ownerId,
   }) async {
-    debugPrint('GET FIELDS START');
+    try {
+      debugPrint('GET FIELDS START');
 
-    final res = await api.get(
-      'fields',
-      queryParameters: {
-        'page': page,
-        'limit': limit,
-        if (ownerId != null && ownerId.isNotEmpty) 'ownerId': ownerId,
-      },
-    );
+      final res = await api.get(
+        'fields',
+        queryParameters: {
+          'page': page,
+          'limit': limit,
+          if (ownerId != null && ownerId.isNotEmpty) 'ownerId': ownerId,
+        },
+      );
 
-    debugPrint('GET FIELDS STATUS = ${res.statusCode}');
-    debugPrint('GET FIELDS DATA = ${res.data}');
+      debugPrint('GET FIELDS STATUS = ${res.statusCode}');
+      debugPrint('GET FIELDS DATA = ${res.data}');
 
-    return _parseFieldsResponse(res.data);
+      return _parseFieldsResponse(res.data);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException(message: e.toString());
+    }
   }
 
   Future<FieldsResponse<FieldModel>> searchFields({
@@ -39,20 +46,26 @@ class FieldsRepository {
     double? longitude,
     int? radiusKm,
   }) async {
-    final res = await api.get(
-      'fields/search',
-      queryParameters: {
-        if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
-        if (latitude != null) 'latitude': latitude,
-        if (longitude != null) 'longitude': longitude,
-        if (radiusKm != null) 'radiusKm': radiusKm,
-      },
-    );
+    try {
+      final res = await api.get(
+        'fields/search',
+        queryParameters: {
+          if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+          if (latitude != null) 'latitude': latitude,
+          if (longitude != null) 'longitude': longitude,
+          if (radiusKm != null) 'radiusKm': radiusKm,
+        },
+      );
 
-    debugPrint('SEARCH FIELDS STATUS = ${res.statusCode}');
-    debugPrint('SEARCH FIELDS DATA = ${res.data}');
+      debugPrint('SEARCH FIELDS STATUS = ${res.statusCode}');
+      debugPrint('SEARCH FIELDS DATA = ${res.data}');
 
-    return _parseFieldsResponse(res.data);
+      return _parseFieldsResponse(res.data);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException(message: e.toString());
+    }
   }
 
   Future<FieldModel> getFieldById(String fieldId) async {

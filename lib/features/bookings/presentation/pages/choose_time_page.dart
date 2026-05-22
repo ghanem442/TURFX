@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:football/core/theme/app_theme.dart';
+import 'package:football/core/utils/error_utils.dart';
+import 'package:football/core/widgets/app_button.dart';
 import 'package:football/features/fields/data/models/field_model.dart';
+import 'package:football/core/routing/app_navigation.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/booking_providers.dart';
 import '../../data/models/time_slot_model.dart';
-import 'booking_confirmation_page.dart';
+import '../../../fields/presentation/providers/fields_providers.dart';
 
 class ChooseTimePage extends ConsumerStatefulWidget {
-  final FieldModel field;
+  final String fieldId;
+  final FieldModel? field;
 
-  const ChooseTimePage({super.key, required this.field});
+  const ChooseTimePage({super.key, required this.fieldId, this.field});
 
   @override
   ConsumerState<ChooseTimePage> createState() => _ChooseTimePageState();
@@ -27,14 +31,6 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
   String? _selectedTimeSlotId;
   bool _creating = false;
 
-  void _handleBack(BuildContext context) {
-    if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go('/home');
-    }
-  }
-
   Future<void> _refresh(TimeSlotsQuery query) async {
     setState(() {
       _selectedTimeSlotId = null;
@@ -46,7 +42,17 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final field = widget.field;
+    final fieldAsync = ref.watch(fieldByIdProvider(widget.fieldId));
+    final field = widget.field ?? fieldAsync.value;
+
+    if (field == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Choose Time')),
+        body: fieldAsync.isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : const Center(child: Text('Failed to load field')),
+      );
+    }
 
     final title = (field.nameAr?.trim().isNotEmpty == true)
         ? field.nameAr!.trim()
@@ -85,7 +91,7 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
         title: const Text('Choose Time'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => _handleBack(context),
+          onPressed: () => context.safePop(),
         ),
         actions: [
           IconButton(
@@ -115,39 +121,13 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
               top: BorderSide(color: theme.dividerColor.withAlpha(160)),
             ),
           ),
-          child: SizedBox(
-            height: 52,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: (_selectedTimeSlotId != null && !_creating)
-                    ? AppColors.green
-                    : Colors.grey,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: (_selectedTimeSlotId == null || _creating)
-                  ? null
-                  : _handleContinuePressed,
-              child: _creating
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text(
-                      'Continue',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
-                      ),
-                    ),
-            ),
+          child: AppButton(
+            text: 'Continue',
+            color: _selectedTimeSlotId != null ? AppColors.green : Colors.grey,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            onPressed: _selectedTimeSlotId != null
+                ? _handleContinuePressed
+                : null,
           ),
         ),
       ),
@@ -275,9 +255,10 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 10),
-                      ElevatedButton(
-                        onPressed: () => _refresh(query),
-                        child: const Text('Retry'),
+                      AppButton(
+                        text: 'Retry',
+                        width: 120,
+                        onPressed: () async => _refresh(query),
                       ),
                     ],
                   ),
@@ -413,16 +394,16 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
     setState(() => _creating = true);
 
     try {
-      final booking = await ref.read(createBookingProvider(slotId).future);
+      final booking = await ref.read(createBookingProvider.notifier).create(slotId);
 
       if (!mounted) return;
 
       context.push(
         '/booking-confirmation',
-        extra: BookingConfirmationArgs(
-          booking: booking,
-          field: widget.field,
-        ),
+        extra: {
+          'bookingId': booking.id,
+          'fieldId': widget.fieldId,
+        },
       );
     } catch (e, st) {
       debugPrint('================ BOOKING ERROR ================');
@@ -466,8 +447,10 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
   }
 
   String _friendlyError(Object e) {
-    final text = e.toString().replaceFirst('Exception: ', '').trim();
-    return text.isEmpty ? 'Failed to load available time slots' : text;
+    return friendlyErrorMessage(
+      e,
+      fallback: 'تعذر تحميل المواعيد المتاحة',
+    );
   }
 
   String _friendlyBookingError(Object e) {

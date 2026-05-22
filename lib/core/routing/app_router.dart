@@ -5,7 +5,6 @@ import 'package:football/features/owner/presentation/pages/owner_bulk_time_slots
 import 'package:football/features/wallet/presentation/pages/wallet_top_up_page.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/admin/data/models/admin_booking_model.dart';
 import '../../features/admin/presentation/pages/admin_account_page.dart';
 import '../../features/admin/presentation/pages/admin_booking_details_page.dart';
 import '../../features/admin/presentation/pages/admin_bookings_page.dart';
@@ -25,13 +24,11 @@ import '../../features/auth/presentation/pages/reset_password_page.dart';
 import '../../features/auth/presentation/pages/splash_page.dart';
 import '../../features/auth/presentation/pages/verify_email_page.dart';
 import '../../features/auth/presentation/providers/auth_session_provider.dart';
-import '../../features/bookings/data/models/booking_model.dart';
-import '../../features/bookings/data/models/time_slot_model.dart';
 import '../../features/bookings/presentation/pages/booking_confirmation_page.dart';
+import 'router_refresh.dart';
 import '../../features/bookings/presentation/pages/booking_qr_page.dart';
 import '../../features/bookings/presentation/pages/choose_time_page.dart';
 import '../../features/bookings/presentation/pages/my_bookings_page.dart';
-import '../../features/fields/data/models/field_model.dart';
 import '../../features/fields/presentation/pages/field_details_page.dart';
 import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/owner/presentation/pages/add_edit_time_slot_page.dart';
@@ -42,30 +39,16 @@ import '../../features/owner/presentation/pages/owner_qr_checkin_page.dart';
 import '../../features/owner/presentation/pages/owner_time_slots_page.dart';
 import '../../features/profile/presentation/pages/profile_page.dart';
 import '../../features/wallet/presentation/pages/wallet_page.dart';
+import 'page_transitions.dart';
 import 'app_shell.dart';
 
-final goRouterProvider = Provider<GoRouter>((ref) => AppRouter.router(ref));
+final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
-final routerRefreshProvider = Provider<ValueNotifier<int>>((ref) {
-  final notifier = ValueNotifier<int>(0);
+final goRouterProvider = Provider<GoRouter>((ref) {
+  final refreshListenable = ref.read(routerRefreshProvider);
 
-  ref.listen<AuthStatus>(authSessionProvider, (_, __) => notifier.value++);
-  ref.listen<bool>(authIsVerifiedProvider, (_, __) => notifier.value++);
-  ref.listen<AuthUser?>(authUserProvider, (_, __) => notifier.value++);
-
-  ref.onDispose(notifier.dispose);
-  return notifier;
-});
-
-class AppRouter {
-  static final GlobalKey<NavigatorState> rootNavigatorKey =
-      GlobalKey<NavigatorState>(debugLabel: 'root');
-
-  static GoRouter router(Ref ref) {
-    final refreshListenable = ref.read(routerRefreshProvider);
-
-    return GoRouter(
-      navigatorKey: rootNavigatorKey,
+  final router = GoRouter(
+    navigatorKey: rootNavigatorKey,
       initialLocation: '/splash',
       refreshListenable: refreshListenable,
       errorBuilder: (context, state) => Scaffold(
@@ -105,6 +88,7 @@ class AppRouter {
         final isOwnerEditSlot = loc == '/owner/field-slots/edit';
         final isOwnerBulkSlots = loc == '/owner/field-slots/bulk';
         final isOwnerCheckIn = loc == '/owner/check-in';
+        final isOwnerWallet = loc == '/owner/wallet';
 
         final isPlayerRoot = loc == '/home';
         final isPlayerBookings = loc == '/my-bookings';
@@ -122,10 +106,15 @@ class AppRouter {
             isOwnerFieldSlots ||
             isOwnerEditSlot ||
             isOwnerBulkSlots ||
-            isOwnerCheckIn;
+            isOwnerCheckIn ||
+            isOwnerWallet;
 
-        if (loc == '/booking-confirmation' && state.extra == null) {
-          return '/home';
+        if (loc == '/booking-confirmation') {
+          final extra = state.extra;
+          final bookingId = extra is Map ? extra['bookingId']?.toString() : null;
+          if (bookingId == null || bookingId.trim().isEmpty) {
+            return '/home';
+          }
         }
 
         if (loc.startsWith('/booking/') && loc.endsWith('/qr')) {
@@ -188,23 +177,31 @@ class AppRouter {
       routes: [
         GoRoute(
           path: '/splash',
-          pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const SplashPage()),
+          pageBuilder: (context, state) => buildAppPage(
+            key: state.pageKey,
+            style: AppTransitionStyle.fade,
+            child: const SplashPage(),
+          ),
         ),
         GoRoute(
           path: '/login',
-          pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const LoginPage()),
+          pageBuilder: (context, state) => buildAppPage(
+            key: state.pageKey,
+            style: AppTransitionStyle.fade,
+            child: const LoginPage(),
+          ),
         ),
         GoRoute(
           path: '/register',
           pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const RegisterPage()),
+              buildAppPage(key: state.pageKey, child: const RegisterPage()),
         ),
         GoRoute(
           path: '/forgot-password',
-          pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const ForgotPasswordPage()),
+          pageBuilder: (context, state) => buildAppPage(
+            key: state.pageKey,
+            child: const ForgotPasswordPage(),
+          ),
         ),
         GoRoute(
           path: '/reset-password',
@@ -220,7 +217,7 @@ class AppRouter {
               email = extra;
             }
 
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
               child: ResetPasswordPage(
                 email: email,
@@ -231,15 +228,17 @@ class AppRouter {
         ),
         GoRoute(
           path: '/admin/withdrawal-requests',
-          pageBuilder: (context, state) => _buildPage(
+          pageBuilder: (context, state) => buildAppPage(
             key: state.pageKey,
             child: const AdminWithdrawalRequestsPage(),
           ),
         ),
         GoRoute(
           path: '/admin/account',
-          pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const AdminAccountPage()),
+          pageBuilder: (context, state) => buildAppPage(
+            key: state.pageKey,
+            child: const AdminAccountPage(),
+          ),
         ),
         GoRoute(
           path: '/verify-email',
@@ -247,7 +246,7 @@ class AppRouter {
             final emailFromExtra = state.extra as String?;
             final emailFromQuery = state.uri.queryParameters['email'];
 
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
               child: VerifyEmailPage(
                 email: emailFromExtra ?? emailFromQuery,
@@ -258,33 +257,33 @@ class AppRouter {
         GoRoute(
           path: '/admin',
           pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const AdminDashboardPage()),
+              buildAppPage(key: state.pageKey, child: const AdminDashboardPage()),
         ),
         GoRoute(
           path: '/owner',
           pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const OwnerFieldsPage()),
+              buildAppPage(key: state.pageKey, child: const OwnerFieldsPage()),
         ),
         GoRoute(
           path: '/admin/dashboard',
           pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const AdminDashboardPage()),
+              buildAppPage(key: state.pageKey, child: const AdminDashboardPage()),
         ),
         GoRoute(
           path: '/admin/users',
           pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const AdminUsersPage()),
+              buildAppPage(key: state.pageKey, child: const AdminUsersPage()),
         ),
         GoRoute(
           path: '/admin/fields',
           pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const AdminFieldsPage()),
+              buildAppPage(key: state.pageKey, child: const AdminFieldsPage()),
         ),
         GoRoute(
           path: '/admin/bookings',
           pageBuilder: (context, state) {
             final initialSearch = state.uri.queryParameters['search'];
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
               child: AdminBookingsPage(initialSearch: initialSearch),
             );
@@ -294,15 +293,10 @@ class AppRouter {
           path: '/admin/bookings/:id',
           pageBuilder: (context, state) {
             final id = state.pathParameters['id']!;
-            final booking = state.extra is AdminBookingModel
-                ? state.extra as AdminBookingModel
-                : null;
-
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
               child: AdminBookingDetailsPage(
                 bookingId: id,
-                initialBooking: booking,
               ),
             );
           },
@@ -310,26 +304,26 @@ class AppRouter {
         GoRoute(
           path: '/admin/payments',
           pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const AdminPaymentsPage()),
+              buildAppPage(key: state.pageKey, child: const AdminPaymentsPage()),
         ),
         GoRoute(
           path: '/admin/payment-accounts',
           pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const AdminPaymentAccountsPage()),
+              buildAppPage(key: state.pageKey, child: const AdminPaymentAccountsPage()),
         ),
         GoRoute(
           path: '/admin/settings',
           pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const AdminSettingsPage()),
+              buildAppPage(key: state.pageKey, child: const AdminSettingsPage()),
         ),
         GoRoute(
           path: '/admin/wallet',
           pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const AdminWalletPage()),
+              buildAppPage(key: state.pageKey, child: const AdminWalletPage()),
         ),
         GoRoute(
           path: '/admin/platform-wallet',
-          pageBuilder: (context, state) => _buildPage(
+          pageBuilder: (context, state) => buildAppPage(
             key: state.pageKey,
             child: const AdminPlatformWalletPage(),
           ),
@@ -338,26 +332,26 @@ class AppRouter {
           parentNavigatorKey: rootNavigatorKey,
           path: '/owner/add-field',
           pageBuilder: (context, state) =>
-              _buildPage(key: state.pageKey, child: const AddFieldPage()),
+              buildAppPage(key: state.pageKey, child: const AddFieldPage()),
         ),
         GoRoute(
           parentNavigatorKey: rootNavigatorKey,
           path: '/owner/edit-field',
           pageBuilder: (context, state) {
-            final field = state.extra as FieldModel?;
+            final fieldId = state.uri.queryParameters['fieldId'];
 
-            if (field == null) {
-              return _buildPage(
+            if (fieldId == null || fieldId.trim().isEmpty) {
+              return buildAppPage(
                 key: state.pageKey,
                 child: const Scaffold(
-                  body: Center(child: Text('Missing field data')),
+                  body: Center(child: Text('Missing field id')),
                 ),
               );
             }
 
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
-              child: AddFieldPage(field: field),
+              child: AddFieldPage(fieldId: fieldId),
             );
           },
         ),
@@ -375,7 +369,7 @@ class AppRouter {
             }
 
             if (fieldId == null || fieldId.trim().isEmpty) {
-              return _buildPage(
+              return buildAppPage(
                 key: state.pageKey,
                 child: const Scaffold(
                   body: Center(child: Text('Missing field id')),
@@ -383,7 +377,7 @@ class AppRouter {
               );
             }
 
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
               child: OwnerTimeSlotsPage(
                 fieldId: fieldId,
@@ -403,17 +397,20 @@ class AppRouter {
             String? fieldId;
             String? fieldName;
             DateTime? date;
-            TimeSlotModel? slot;
+            Map<String, dynamic>? slotData;
 
             if (extra is Map) {
               fieldId = extra['fieldId']?.toString();
               fieldName = extra['fieldName']?.toString();
               date = extra['date'] as DateTime?;
-              slot = extra['slot'] as TimeSlotModel?;
+              final rawSlot = extra['slot'];
+              if (rawSlot is Map) {
+                slotData = Map<String, dynamic>.from(rawSlot);
+              }
             }
 
-            if ((fieldId == null || fieldId.trim().isEmpty) && slot == null) {
-              return _buildPage(
+            if ((fieldId == null || fieldId.trim().isEmpty) && slotData == null) {
+              return buildAppPage(
                 key: state.pageKey,
                 child: const Scaffold(
                   body: Center(child: Text('Missing field data')),
@@ -421,14 +418,14 @@ class AppRouter {
               );
             }
 
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
               child: AddEditTimeSlotPage(
-                fieldId: fieldId ?? slot!.fieldId,
+                fieldId: fieldId ?? slotData!['fieldId']?.toString() ?? '',
                 fieldName: (fieldName?.trim().isNotEmpty ?? false)
                     ? fieldName!.trim()
-                    : (slot?.field?.name ?? 'Field Time Slot'),
-                slot: slot,
+                    : 'Field Time Slot',
+                slotData: slotData,
                 initialDate: date,
               ),
             );
@@ -450,7 +447,7 @@ class AppRouter {
             fieldId ??= state.uri.queryParameters['fieldId'];
             fieldName ??= state.uri.queryParameters['fieldName'];
 
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
               child: OwnerBookingsPage(fieldId: fieldId, fieldName: fieldName),
             );
@@ -461,22 +458,31 @@ class AppRouter {
           path: '/owner/bookings/:id',
           pageBuilder: (context, state) {
             final id = state.pathParameters['id']!;
-            final booking = state.extra is BookingModel
-                ? state.extra as BookingModel
-                : null;
-
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
               child: OwnerBookingDetailsPage(
                 bookingId: id,
-                initialBooking: booking,
               ),
             );
           },
         ),
         GoRoute(
+          parentNavigatorKey: rootNavigatorKey,
           path: '/wallet/top-up',
-          builder: (context, state) => const WalletTopUpPage(),
+          pageBuilder: (context, state) => buildAppPage(
+            key: state.pageKey,
+            style: AppTransitionStyle.modal,
+            child: const WalletTopUpPage(),
+          ),
+        ),
+        GoRoute(
+          parentNavigatorKey: rootNavigatorKey,
+          path: '/owner/wallet',
+          pageBuilder: (context, state) => buildAppPage(
+            key: state.pageKey,
+            style: AppTransitionStyle.modal,
+            child: const WalletPage(),
+          ),
         ),
         GoRoute(
           parentNavigatorKey: rootNavigatorKey,
@@ -495,7 +501,7 @@ class AppRouter {
               qrToken = extra['qrToken']?.toString();
             }
 
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
               child: OwnerQrCheckInPage(
                 fieldId: fieldId,
@@ -516,7 +522,7 @@ class AppRouter {
                 GoRoute(
                   path: '/home',
                   pageBuilder: (context, state) =>
-                      _buildPage(key: state.pageKey, child: const HomePage()),
+                      buildAppPage(key: state.pageKey, child: const HomePage()),
                 ),
               ],
             ),
@@ -524,7 +530,7 @@ class AppRouter {
               routes: [
                 GoRoute(
                   path: '/my-bookings',
-                  pageBuilder: (context, state) => _buildPage(
+                  pageBuilder: (context, state) => buildAppPage(
                     key: state.pageKey,
                     child: const MyBookingsPage(),
                   ),
@@ -536,7 +542,7 @@ class AppRouter {
                 GoRoute(
                   path: '/wallet',
                   pageBuilder: (context, state) =>
-                      _buildPage(key: state.pageKey, child: const WalletPage()),
+                      buildAppPage(key: state.pageKey, child: const WalletPage()),
                 ),
               ],
             ),
@@ -544,7 +550,7 @@ class AppRouter {
               routes: [
                 GoRoute(
                   path: '/profile',
-                  pageBuilder: (context, state) => _buildPage(
+                  pageBuilder: (context, state) => buildAppPage(
                     key: state.pageKey,
                     child: const ProfilePage(),
                   ),
@@ -558,28 +564,29 @@ class AppRouter {
           path: '/field/:id',
           pageBuilder: (context, state) {
             final id = state.pathParameters['id']!;
-            final field = state.extra is FieldModel
-                ? state.extra as FieldModel
-                : null;
-
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
-              child: FieldDetailsPage(fieldId: id, field: field),
+              style: AppTransitionStyle.modal,
+              child: FieldDetailsPage(fieldId: id),
             );
           },
         ),
         GoRoute(
           parentNavigatorKey: rootNavigatorKey,
-          path: '/booking/choose-time',
+          path: '/booking/choose-time/:fieldId',
           pageBuilder: (context, state) {
-            final field = state.extra as FieldModel?;
-            final child = (field == null)
+            final fieldId = state.pathParameters['fieldId'];
+            final child = (fieldId == null || fieldId.trim().isEmpty)
                 ? const Scaffold(
                     body: Center(child: Text('Missing field data')),
                   )
-                : ChooseTimePage(field: field);
+                : ChooseTimePage(fieldId: fieldId);
 
-            return _buildPage(key: state.pageKey, child: child);
+            return buildAppPage(
+              key: state.pageKey,
+              style: AppTransitionStyle.modal,
+              child: child,
+            );
           },
         ),
         GoRoute(
@@ -589,7 +596,7 @@ class AppRouter {
             final extra = state.extra;
 
             if (extra is! Map<String, dynamic>) {
-              return _buildPage(
+              return buildAppPage(
                 key: state.pageKey,
                 child: const Scaffold(
                   body: Center(child: Text('Missing bulk time slots data')),
@@ -601,7 +608,7 @@ class AppRouter {
             final fieldName = extra['fieldName']?.toString();
 
             if (fieldId == null || fieldId.trim().isEmpty) {
-              return _buildPage(
+              return buildAppPage(
                 key: state.pageKey,
                 child: const Scaffold(
                   body: Center(child: Text('Missing field id')),
@@ -609,13 +616,14 @@ class AppRouter {
               );
             }
 
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
               child: OwnerBulkTimeSlotsPage(
                 fieldId: fieldId,
                 fieldName: (fieldName?.trim().isNotEmpty ?? false)
                     ? fieldName!.trim()
                     : 'Field Time Slots',
+                selectedDate: extra['selectedDate'] as DateTime?,
               ),
             );
           },
@@ -624,9 +632,12 @@ class AppRouter {
           parentNavigatorKey: rootNavigatorKey,
           path: '/booking-confirmation',
           pageBuilder: (context, state) {
-            final args = state.extra as BookingConfirmationArgs?;
-            return _buildPage(
+            final args = state.extra is Map<String, dynamic>
+                ? state.extra as Map<String, dynamic>
+                : null;
+            return buildAppPage(
               key: state.pageKey,
+              style: AppTransitionStyle.modal,
               child: BookingConfirmationPage(args: args),
             );
           },
@@ -636,43 +647,16 @@ class AppRouter {
           path: '/booking/:id/qr',
           pageBuilder: (context, state) {
             final id = state.pathParameters['id']!;
-            return _buildPage(
+            return buildAppPage(
               key: state.pageKey,
+              style: AppTransitionStyle.modal,
               child: BookingQrPage(bookingId: id),
             );
           },
         ),
       ],
     );
-  }
-}
 
-CustomTransitionPage<void> _buildPage({
-  required LocalKey key,
-  required Widget child,
-}) {
-  return CustomTransitionPage<void>(
-    key: key,
-    child: child,
-    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      );
-
-      final offsetTween = Tween<Offset>(
-        begin: const Offset(0.04, 0.0),
-        end: Offset.zero,
-      );
-
-      return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(
-          position: offsetTween.animate(curved),
-          child: child,
-        ),
-      );
-    },
-  );
-}
+    ref.onDispose(router.dispose);
+    return router;
+  });

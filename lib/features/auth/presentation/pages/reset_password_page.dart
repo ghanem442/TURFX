@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:football/core/routing/app_navigation.dart';
+import 'package:football/core/widgets/app_button.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/auth_repository_provider.dart';
@@ -21,7 +23,6 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
 
-  bool _loading = false;
   bool _obscure1 = true;
   bool _obscure2 = true;
 
@@ -48,8 +49,6 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
   }
 
   Future<void> _submit() async {
-    if (_loading) return;
-
     FocusScope.of(context).unfocus();
 
     final email = (widget.email ?? '').trim();
@@ -110,8 +109,6 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
       return;
     }
 
-    setState(() => _loading = true);
-
     try {
       final repo = ref.read(authRepositoryProvider);
       final res = await repo.resetPassword(
@@ -152,18 +149,6 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to reset password: $e')),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
-    }
-  }
-
-  void _handleBack() {
-    if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go('/forgot-password');
     }
   }
 
@@ -176,7 +161,7 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
         title: const Text('Reset Password'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: _handleBack,
+          onPressed: () => context.safePop(fallback: '/forgot-password'),
         ),
       ),
       body: SafeArea(
@@ -241,11 +226,7 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
               controller: _confirmCtrl,
               obscureText: _obscure2,
               textInputAction: TextInputAction.done,
-              onSubmitted: (_) {
-                if (!_loading) {
-                  _submit();
-                }
-              },
+              onSubmitted: (_) => _submit(),
               decoration: InputDecoration(
                 hintText: 'Confirm new password',
                 prefixIcon: const Icon(Icons.lock_outline),
@@ -260,18 +241,9 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
               ),
             ),
             const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _submit,
-                child: _loading
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Reset password'),
-              ),
+            AppButton(
+              text: 'Reset password',
+              onPressed: _submit,
             ),
           ],
         ),

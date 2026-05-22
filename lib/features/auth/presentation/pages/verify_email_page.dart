@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/widgets/app_button.dart';
 import '../../data/auth_repository_provider.dart';
 import '../providers/auth_session_provider.dart';
 
@@ -19,9 +20,6 @@ class VerifyEmailPage extends ConsumerStatefulWidget {
 }
 
 class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
-  bool _sending = false;
-  bool _autoVerifying = false;
-  bool _checkingVerification = false;
 
   String get _email => (widget.email ?? '').trim();
 
@@ -47,14 +45,10 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
   }
 
   Future<void> _resend() async {
-    if (_sending) return;
-
     if (_email.isEmpty) {
       _showSnack('Email is missing');
       return;
     }
-
-    setState(() => _sending = true);
 
     try {
       final repo = ref.read(authRepositoryProvider);
@@ -67,20 +61,14 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
       _showSnack(msg);
     } catch (e) {
       _showSnack('Failed to resend verification email: $e');
-    } finally {
-      if (mounted) setState(() => _sending = false);
     }
   }
 
   Future<void> _devAutoVerify() async {
-    if (_autoVerifying) return;
-
     if (_email.isEmpty) {
       _showSnack('Email is missing');
       return;
     }
-
-    setState(() => _autoVerifying = true);
 
     try {
       final repo = ref.read(authRepositoryProvider);
@@ -144,16 +132,10 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
       );
     } catch (e) {
       _showSnack('Auto verify failed: $e');
-    } finally {
-      if (mounted) setState(() => _autoVerifying = false);
     }
   }
 
   Future<void> _iVerifiedContinue() async {
-    if (_checkingVerification) return;
-
-    setState(() => _checkingVerification = true);
-
     try {
       final repo = ref.read(authRepositoryProvider);
       final session = ref.read(authSessionProvider.notifier);
@@ -214,8 +196,6 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
       if (!mounted) return;
       _showSnack('Failed to refresh account status. Please log in again.');
       context.go('/login');
-    } finally {
-      if (mounted) setState(() => _checkingVerification = false);
     }
   }
 
@@ -256,32 +236,15 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
                   style: const TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _sending ? null : _resend,
-                    child: _sending
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Resend verification email'),
-                  ),
+                AppButton(
+                  text: 'Resend verification email',
+                  onPressed: _resend,
                 ),
                 const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: _checkingVerification ? null : _iVerifiedContinue,
-                    child: _checkingVerification
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('I verified my email, continue'),
-                  ),
+                AppButton(
+                  text: 'I verified my email, continue',
+                  outlined: true,
+                  onPressed: _iVerifiedContinue,
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
@@ -293,18 +256,10 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
                 ),
                 if (kDebugMode) ...[
                   const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: TextButton(
-                      onPressed: _autoVerifying ? null : _devAutoVerify,
-                      child: _autoVerifying
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('DEV: Auto verify this email'),
-                    ),
+                  AppButton(
+                    text: 'DEV: Auto verify this email',
+                    outlined: true,
+                    onPressed: _devAutoVerify,
                   ),
                 ],
                 const SizedBox(height: 12),

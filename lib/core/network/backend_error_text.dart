@@ -14,6 +14,8 @@ String humanizeBackendErrorText(String? raw) {
       return 'انتهت الجلسة أو التوكن غير صالح. جرّب تسجيل الخروج ثم الدخول مرة أخرى.';
     case 'common.forbidden':
       return 'ليس لديك صلاحية لتنفيذ هذا الإجراء.';
+    case 'common.tooManyRequests':
+      return 'طلبات كثيرة جدًا. انتظر لحظة وحاول مرة أخرى.';
     default:
       if (s.startsWith('common.')) {
         return 'رد من الخادم: $s (افتح logs الـ API على Railway لمعرفة السبب).';

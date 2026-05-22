@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:football/core/utils/error_utils.dart';
+import 'package:football/core/widgets/app_button.dart';
 import 'package:football/features/auth/presentation/providers/auth_session_provider.dart';
 import 'package:football/features/fields/data/models/field_model.dart';
 import 'package:football/features/owner/presentation/providers/owner_providers.dart';
@@ -150,9 +152,26 @@ class OwnerFieldsPage extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             children: [
               const SizedBox(height: 120),
-              Text(
-                'Failed to load fields\n\n$e',
+              const Icon(Icons.error_outline, size: 52, color: Colors.red),
+              const SizedBox(height: 10),
+              const Text(
+                'Failed to load fields',
                 textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                friendlyErrorMessage(e),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              Center(
+                child: AppButton(
+                  text: 'Retry',
+                  width: 140,
+                  onPressed: () async => _refreshFields(ref),
+                ),
               ),
             ],
           ),
@@ -212,8 +231,7 @@ class OwnerFieldsPage extends ConsumerWidget {
                   ),
                   onEditField: () async {
                     final result = await context.push<bool>(
-                      '/owner/edit-field',
-                      extra: field,
+                      '/owner/edit-field?fieldId=${field.id}',
                     );
 
                     if (result == true) {

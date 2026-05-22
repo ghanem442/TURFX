@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:football/core/theme/app_theme.dart';
 import 'package:football/core/theme/theme_mode_provider.dart';
 
+import 'core/providers/app_initializer_provider.dart';
 import 'core/routing/app_router.dart';
 
 class MyApp extends ConsumerWidget {
@@ -12,6 +13,8 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(appInitializerProvider);
+
     final themeMode = ref.watch(themeModeProvider);
     final router = ref.watch(goRouterProvider);
 

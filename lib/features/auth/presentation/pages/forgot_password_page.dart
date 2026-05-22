@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:football/core/routing/app_navigation.dart';
+import 'package:football/core/widgets/app_button.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/auth_repository_provider.dart';
@@ -14,7 +16,6 @@ class ForgotPasswordPage extends ConsumerStatefulWidget {
 
 class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
   final _emailCtrl = TextEditingController();
-  bool _loading = false;
 
   @override
   void dispose() {
@@ -23,8 +24,6 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
   }
 
   Future<void> _submit() async {
-    if (_loading) return;
-
     FocusScope.of(context).unfocus();
 
     final email = _emailCtrl.text.trim();
@@ -42,8 +41,6 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
       );
       return;
     }
-
-    setState(() => _loading = true);
 
     try {
       final repo = ref.read(authRepositoryProvider);
@@ -74,6 +71,7 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
         ),
       );
 
+      if (!mounted) return;
       await context.push(
         '/reset-password',
         extra: {
@@ -82,20 +80,9 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
       );
     } catch (e) {
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to send code: $e')),
+        SnackBar(content: Text('Error: $e')),
       );
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  void _handleBack() {
-    if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go('/login');
     }
   }
 
@@ -108,7 +95,7 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
         title: const Text('Forgot Password'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: _handleBack,
+          onPressed: () => context.safePop(fallback: '/login'),
         ),
       ),
       body: SafeArea(
@@ -137,29 +124,16 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
               controller: _emailCtrl,
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.done,
-              onSubmitted: (_) {
-                if (!_loading) {
-                  _submit();
-                }
-              },
+              onSubmitted: (_) => _submit(),
               decoration: const InputDecoration(
                 hintText: 'Email',
                 prefixIcon: Icon(Icons.email_outlined),
               ),
             ),
             const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _submit,
-                child: _loading
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Send code'),
-              ),
+            AppButton(
+              text: 'Send code',
+              onPressed: _submit,
             ),
           ],
         ),

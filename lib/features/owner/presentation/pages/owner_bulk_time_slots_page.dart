@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:football/core/widgets/app_button.dart';
 import 'package:football/features/owner/data/models/owner_bulk_slot_models.dart';
 import 'package:football/features/owner/presentation/providers/owner_providers.dart';
 import 'package:go_router/go_router.dart';
@@ -7,11 +8,13 @@ import 'package:go_router/go_router.dart';
 class OwnerBulkTimeSlotsPage extends ConsumerStatefulWidget {
   final String fieldId;
   final String fieldName;
+  final DateTime? selectedDate;
 
   const OwnerBulkTimeSlotsPage({
     super.key,
     required this.fieldId,
     required this.fieldName,
+    this.selectedDate,
   });
 
   @override
@@ -37,13 +40,14 @@ class _OwnerBulkTimeSlotsPageState
   };
 
   final List<_TimeRangeFormItem> _timeRanges = [];
-  bool _submitting = false;
 
   @override
   void initState() {
     super.initState();
+    // Bug Fix 4: Use the selected date from the main screen if provided
     final now = DateTime.now();
-    _startDate = DateTime(now.year, now.month, now.day);
+    final baseDate = widget.selectedDate ?? DateTime(now.year, now.month, now.day);
+    _startDate = DateTime(baseDate.year, baseDate.month, baseDate.day);
     _endDate = _startDate;
     _timeRanges.add(_TimeRangeFormItem());
   }
@@ -192,7 +196,6 @@ class _OwnerBulkTimeSlotsPageState
   }
 
   Future<void> _submit() async {
-    if (_submitting) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     final selectedDays = _selectedDaysOfWeek();
@@ -252,8 +255,6 @@ class _OwnerBulkTimeSlotsPageState
     final repo = ref.read(ownerRepositoryProvider);
     final messenger = ScaffoldMessenger.of(context);
 
-    setState(() => _submitting = true);
-
     try {
       final result = await repo.bulkCreateTimeSlots(
         fieldId: widget.fieldId,
@@ -265,33 +266,126 @@ class _OwnerBulkTimeSlotsPageState
 
       if (!mounted) return;
 
-      final message = result.message?.trim().isNotEmpty == true
-          ? result.message!
-          : 'Created ${result.count} slots successfully';
+      // Check if backend sent created/skipped counts
+      final created = result.count;
+      final skipped = result.skipped;
+      
+      String message;
+      if (skipped > 0) {
+        // Show both created and skipped counts
+        message = '$created slots created successfully. $skipped slots were skipped because they already existed.';
+      } else if (result.message?.trim().isNotEmpty == true) {
+        message = result.message!;
+      } else {
+        message = 'Created $created slots successfully';
+      }
 
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            '$message\n${result.dates} day(s) × ${result.timeRanges} range(s) = ${result.count} slot(s)',
+            '$message\n${result.dates} day(s) × ${result.timeRanges} range(s) = $created slot(s)',
           ),
+          duration: const Duration(seconds: 4),
         ),
       );
 
-      context.pop(true);
+      // Bug Fix 1: Return the start date so the list can refresh with the correct date
+      context.pop({'success': true, 'date': _startDate});
     } catch (e) {
       if (!mounted) return;
 
+      final errorMessage = e.toString().replaceFirst('Exception: ', '').trim();
+      
+      // Bug Fix 2: Handle overlapping slot error specially
+      // If slots already exist, treat it as success and refresh the list
+      if (errorMessage.contains('timeSlot.overlappingSlot') || 
+          errorMessage.contains('timeSlot.overlappingSlotDetails') ||
+          errorMessage.contains('overlappingSlot') ||
+          errorMessage.toLowerCase().contains('overlapping')) {
+        
+        // Show friendly message in a dialog
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Slots Already Exist'),
+            content: const Text(
+              'Some or all of these slots already exist. Please adjust your date range or time.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        
+        // Return success with the date so the list refreshes
+        context.pop({'success': true, 'date': _startDate});
+        return;
+      }
+
+      // Handle rate limit error
+      if (errorMessage.contains('429') || 
+          errorMessage.toLowerCase().contains('too many requests') ||
+          errorMessage.toLowerCase().contains('toomanyrequests')) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Too many requests, please wait a moment'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
+        return;
+      }
+
+      // Show user-friendly error message
+      final friendlyMessage = _getFriendlyErrorMessage(errorMessage);
       messenger.showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(friendlyMessage),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _submitting = false);
-      }
     }
+  }
+
+  String _getFriendlyErrorMessage(String error) {
+    final lower = error.toLowerCase();
+    
+    // Check for common error patterns
+    if (lower.contains('network') || lower.contains('connection')) {
+      return 'Network error. Please check your connection and try again.';
+    }
+    if (lower.contains('timeout')) {
+      return 'Request timed out. Please try again.';
+    }
+    if (lower.contains('unauthorized') || lower.contains('401')) {
+      return 'Session expired. Please log in again.';
+    }
+    if (lower.contains('forbidden') || lower.contains('403')) {
+      return 'You do not have permission to perform this action.';
+    }
+    if (lower.contains('not found') || lower.contains('404')) {
+      return 'Resource not found. Please try again.';
+    }
+    if (lower.contains('server') || lower.contains('500') || lower.contains('502') || lower.contains('503')) {
+      return 'Server error. Please try again later.';
+    }
+    
+    // If error looks like a backend key (no spaces, has dots), show generic message
+    if (!error.contains(' ') && error.contains('.')) {
+      return 'Something went wrong, please try again';
+    }
+    
+    // If we have a readable message, show it
+    if (error.isNotEmpty && error.length < 200) {
+      return error;
+    }
+    
+    // Fallback
+    return 'Something went wrong, please try again';
   }
 
   @override
@@ -327,7 +421,7 @@ class _OwnerBulkTimeSlotsPageState
                   title: const Text('Start Date'),
                   subtitle: Text(_formatDate(_startDate)),
                   trailing: TextButton(
-                    onPressed: _submitting ? null : _pickStartDate,
+                    onPressed: _pickStartDate,
                     child: const Text('Change'),
                   ),
                 ),
@@ -339,7 +433,7 @@ class _OwnerBulkTimeSlotsPageState
                   title: const Text('End Date'),
                   subtitle: Text(_formatDate(_endDate)),
                   trailing: TextButton(
-                    onPressed: _submitting ? null : _pickEndDate,
+                    onPressed: _pickEndDate,
                     child: const Text('Change'),
                   ),
                 ),
@@ -360,9 +454,7 @@ class _OwnerBulkTimeSlotsPageState
                   return _DayChip(
                     label: _weekdayLabel(index),
                     value: _selectedWeekdays[index] ?? false,
-                    onChanged: _submitting
-                        ? null
-                        : (v) => setState(() {
+                    onChanged: (v) => setState(() {
                               _selectedWeekdays[index] = v;
                             }),
                   );
@@ -381,7 +473,7 @@ class _OwnerBulkTimeSlotsPageState
                     ),
                   ),
                   OutlinedButton.icon(
-                    onPressed: _submitting ? null : _addTimeRange,
+                    onPressed: _addTimeRange,
                     icon: const Icon(Icons.add),
                     label: const Text('Add Range'),
                   ),
@@ -412,9 +504,7 @@ class _OwnerBulkTimeSlotsPageState
                               if (_timeRanges.length > 1)
                                 IconButton(
                                   tooltip: 'Remove',
-                                  onPressed: _submitting
-                                      ? null
-                                      : () => _removeTimeRange(index),
+                                  onPressed: () => _removeTimeRange(index),
                                   icon: const Icon(Icons.delete_outline),
                                 ),
                             ],
@@ -430,9 +520,7 @@ class _OwnerBulkTimeSlotsPageState
                                     : item.startTime!.format(context),
                               ),
                               trailing: TextButton(
-                                onPressed: _submitting
-                                    ? null
-                                    : () => _pickRangeStart(index),
+                                onPressed: () => _pickRangeStart(index),
                                 child: const Text('Select'),
                               ),
                             ),
@@ -448,9 +536,7 @@ class _OwnerBulkTimeSlotsPageState
                                     : item.endTime!.format(context),
                               ),
                               trailing: TextButton(
-                                onPressed: _submitting
-                                    ? null
-                                    : () => _pickRangeEnd(index),
+                                onPressed: () => _pickRangeEnd(index),
                                 child: const Text('Select'),
                               ),
                             ),
@@ -489,23 +575,16 @@ class _OwnerBulkTimeSlotsPageState
                 ),
               ),
               const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: _submitting ? null : _submit,
-                icon: _submitting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.auto_awesome_motion_outlined),
-                label: Text(
-                  _submitting ? 'Please wait...' : 'Create Bulk Slots',
-                ),
+              AppButton(
+                text: 'Create Bulk Slots',
+                icon: Icons.auto_awesome_motion_outlined,
+                onPressed: _submit,
               ),
               const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: _submitting ? null : () => context.pop(),
-                child: const Text('Cancel'),
+              AppButton(
+                text: 'Cancel',
+                outlined: true,
+                onPressed: () async => context.pop(),
               ),
               const SizedBox(height: 12),
               Text(

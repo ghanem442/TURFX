@@ -24,6 +24,7 @@ class BulkCreateTimeSlotsResult {
   final int count;
   final int dates;
   final int timeRanges;
+  final int skipped; // Number of slots that were skipped (already existed)
 
   const BulkCreateTimeSlotsResult({
     required this.success,
@@ -31,6 +32,7 @@ class BulkCreateTimeSlotsResult {
     required this.count,
     required this.dates,
     required this.timeRanges,
+    this.skipped = 0,
   });
 
   factory BulkCreateTimeSlotsResult.fromJson(Map<String, dynamic> json) {
@@ -68,6 +70,7 @@ class BulkCreateTimeSlotsResult {
       count: asInt(data['count']),
       dates: asInt(data['dates']),
       timeRanges: asInt(data['timeRanges']),
+      skipped: asInt(data['skipped']),
     );
   }
 }

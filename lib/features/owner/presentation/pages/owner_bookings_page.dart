@@ -416,7 +416,6 @@ class _OwnerBookingsPageState extends ConsumerState<OwnerBookingsPage> {
                         booking: booking,
                         onViewDetails: () => context.push(
                           '/owner/bookings/${booking.id}',
-                          extra: booking,
                         ),
                         onOpenCheckIn: () => context.push(
                           '/owner/check-in',

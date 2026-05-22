@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'api_client.dart';
 import 'auth_interceptor.dart';
 import 'base_url.dart';
+import 'package:football/core/routing/app_router.dart';
 import 'package:football/features/auth/presentation/providers/auth_session_provider.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) {
@@ -50,6 +51,12 @@ final apiClientProvider = Provider<ApiClient>((ref) {
       },
       logout: () async {
         await ref.read(authSessionProvider.notifier).logout();
+      },
+      onSessionExpired: () {
+        final navigator = rootNavigatorKey.currentState;
+        if (navigator != null) {
+          navigator.pushNamedAndRemoveUntil('/login', (_) => false);
+        }
       },
     ),
   );

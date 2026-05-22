@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:football/core/routing/app_navigation.dart';
+import 'package:football/core/utils/error_utils.dart';
+import 'package:football/core/widgets/app_button.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/booking_model.dart';
@@ -136,12 +139,12 @@ class _MyBookingsPageState extends ConsumerState<MyBookingsPage>
 
     try {
       final cancelResult = await ref.read(
-        cancelBookingProvider(
-          CancelBookingParams(
-            bookingId: booking.id,
-            reason: 'Cancelled by player',
-          ),
-        ).future,
+        cancelBookingProvider.notifier,
+      ).cancel(
+        CancelBookingParams(
+          bookingId: booking.id,
+          reason: 'Cancelled by player',
+        ),
       );
 
       await ref.read(paymentLocalStoreProvider).clearPaymentId(
@@ -191,9 +194,10 @@ class _MyBookingsPageState extends ConsumerState<MyBookingsPage>
   }
 
   String _extractErrorMessage(Object e) {
-    final text = e.toString().replaceFirst('Exception: ', '').trim();
-    if (text.isNotEmpty) return text;
-    return 'Failed to cancel booking';
+    return friendlyErrorMessage(
+      e,
+      fallback: 'تعذر إلغاء الحجز',
+    );
   }
 
   String _refundPercentage(num value) {
@@ -434,10 +438,9 @@ class _BookingCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
         onTap: () {
-          context.go(
-            '/booking-confirmation',
-            extra: BookingConfirmationArgs(booking: booking),
-          );
+          context.openBookingConfirmation({
+            'bookingId': booking.id,
+          });
         },
         child: Padding(
           padding: const EdgeInsets.all(18),
@@ -612,10 +615,9 @@ class _BookingCard extends StatelessWidget {
                 children: [
                   TextButton.icon(
                     onPressed: () {
-                      context.go(
-                        '/booking-confirmation',
-                        extra: BookingConfirmationArgs(booking: booking),
-                      );
+                      context.openBookingConfirmation({
+                        'bookingId': booking.id,
+                      });
                     },
                     icon: Icon(
                       showContinuePayment
@@ -784,7 +786,7 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _ErrorState extends StatelessWidget {
-  final VoidCallback onRetry;
+  final Future<void> Function() onRetry;
   final String message;
 
   const _ErrorState({
@@ -811,9 +813,10 @@ class _ErrorState extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Center(
-          child: ElevatedButton(
+          child: AppButton(
+            text: 'Retry',
+            width: 140,
             onPressed: onRetry,
-            child: const Text('Retry'),
           ),
         ),
       ],

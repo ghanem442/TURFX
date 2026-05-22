@@ -1,39 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:football/core/network/api_client.dart';
 import 'package:football/core/network/models/api_response.dart';
+import 'package:football/core/utils/error_utils.dart';
 
 class AuthRepository {
   AuthRepository(this._api);
 
   final ApiClient _api;
-
-  String _extractErrorMessage(Map<String, dynamic> body) {
-    final error = body['error'];
-
-    if (error is Map) {
-      final msg = error['message'];
-
-      if (msg is Map) {
-        final ar = msg['ar']?.toString();
-        final en = msg['en']?.toString();
-
-        if (ar != null && ar.trim().isNotEmpty) return ar;
-        if (en != null && en.trim().isNotEmpty) return en;
-      }
-
-      final plainMsg = error['message']?.toString();
-      if (plainMsg != null && plainMsg.trim().isNotEmpty) {
-        return plainMsg;
-      }
-    }
-
-    final message = body['message']?.toString();
-    if (message != null && message.trim().isNotEmpty) {
-      return message;
-    }
-
-    return 'Request failed';
-  }
 
   ApiResponse<Map<String, dynamic>> _parseSafe(Map<String, dynamic> body) {
     final fixed = Map<String, dynamic>.from(body);
@@ -116,7 +89,7 @@ class AuthRepository {
 
       if (statusCode != null && statusCode >= 400) {
         return _failure(
-          message: _extractErrorMessage(body),
+          message: extractErrorMessage(body),
           statusCode: statusCode,
           raw: body,
         );
@@ -124,7 +97,7 @@ class AuthRepository {
 
       if (body['success'] != true) {
         return _failure(
-          message: _extractErrorMessage(body),
+          message: extractErrorMessage(body),
           statusCode: statusCode,
           raw: body,
         );
@@ -166,7 +139,7 @@ class AuthRepository {
 
       if (statusCode != null && statusCode >= 400) {
         return _failure(
-          message: _extractErrorMessage(body),
+          message: extractErrorMessage(body),
           statusCode: statusCode,
           raw: body,
         );
@@ -174,7 +147,7 @@ class AuthRepository {
 
       if (body['success'] != true) {
         return _failure(
-          message: _extractErrorMessage(body),
+          message: extractErrorMessage(body),
           statusCode: statusCode,
           raw: body,
         );

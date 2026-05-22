@@ -3,14 +3,18 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:football/core/network/api_client.dart';
-import 'package:football/features/bookings/data/bookings_api.dart';
-import 'package:football/features/bookings/data/payment_proof_upload.dart';
+import 'package:football/core/network/cloudinary_upload_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:football/core/utils/error_utils.dart';
+import 'package:football/core/errors/api_exception.dart';
 
 import 'models/booking_model.dart';
 import 'models/bookings_list_result_model.dart';
 import 'models/cancel_booking_result_model.dart';
+import 'models/manual_payment_info_model.dart';
 import 'models/payment_result_model.dart';
+import 'models/payment_upload_result_model.dart';
+import 'models/payment_verification_status_model.dart';
 import 'models/time_slot_model.dart';
 
 class BookingsRepository {
@@ -109,7 +113,7 @@ class BookingsRepository {
       }
 
       if (root['success'] == false) {
-        final msg = _extractErrorMessage(root);
+        final msg = extractErrorMessage(root);
 
         if (kDebugMode) {
           debugPrint('[CREATE_BOOKING] backend rejected request');
@@ -177,7 +181,7 @@ class BookingsRepository {
       }
 
       if (root['success'] == false) {
-        throw Exception(_extractErrorMessage(root));
+        throw Exception(extractErrorMessage(root));
       }
 
       final rawData = root['data'];
@@ -232,7 +236,7 @@ class BookingsRepository {
       }
 
       if (root['success'] == false) {
-        throw Exception(_extractErrorMessage(root));
+        throw Exception(extractErrorMessage(root));
       }
 
       final rawData = root['data'];
@@ -374,7 +378,7 @@ class BookingsRepository {
       }
 
       if (root['success'] == false) {
-        throw Exception(_extractErrorMessage(root));
+        throw Exception(extractErrorMessage(root));
       }
 
       final rawData = root['data'];
@@ -522,6 +526,7 @@ class BookingsRepository {
     String? notes,
     String? transactionId,
     String? senderNumber,
+    void Function(int sent, int total)? onProgress,
   }) async {
     final resolvedPaymentId = paymentId.trim();
 
@@ -536,10 +541,10 @@ class BookingsRepository {
     }
 
     try {
-      final screenshotUrl = await PaymentProofUpload.uploadWithApiClient(
-        api: api,
-        file: screenshotFile,
-        paymentId: resolvedPaymentId,
+      final cloudinary = CloudinaryUploadService(api);
+      final screenshotUrl = await cloudinary.uploadImage(
+        imageFile: screenshotFile,
+        onProgress: onProgress,
       );
 
       final body = <String, dynamic>{
@@ -567,7 +572,7 @@ class BookingsRepository {
       }
 
       if (root['success'] == false) {
-        throw Exception(_extractErrorMessage(root));
+        throw Exception(extractErrorMessage(root));
       }
 
       final rawData = root['data'];
@@ -627,7 +632,7 @@ class BookingsRepository {
       }
 
       if (root['success'] == false) {
-        throw Exception(_extractErrorMessage(root));
+        throw Exception(extractErrorMessage(root));
       }
 
       final rawData = root['data'];
@@ -642,6 +647,25 @@ class BookingsRepository {
       if (kDebugMode) {
         debugPrint('[PAYMENT_STATUS] DioException status=${e.response?.statusCode}');
         debugPrint('[PAYMENT_STATUS] DioException data=${e.response?.data}');
+      }
+
+      // Handle 429 Too Many Requests with retryAfter
+      if (e.response?.statusCode == 429) {
+        int retryAfter = 10; // Default to 10 seconds
+        
+        try {
+          final responseData = e.response?.data;
+          if (responseData is Map) {
+            retryAfter = (responseData['retryAfter'] as num?)?.toInt() ?? 10;
+          }
+        } catch (_) {
+          // If parsing fails, use default
+        }
+        
+        throw TooManyRequestsException(
+          retryAfter: retryAfter,
+          message: 'Too many requests. Please wait $retryAfter seconds before retrying.',
+        );
       }
 
       throw Exception(
@@ -696,7 +720,7 @@ class BookingsRepository {
         final message =
             parsed.messageAr ??
             parsed.messageEn ??
-            _extractErrorMessage(Map<String, dynamic>.from(data));
+            extractErrorMessage(Map<String, dynamic>.from(data));
 
         throw Exception(message);
       }
@@ -786,7 +810,7 @@ class BookingsRepository {
     final data = e.response?.data;
 
     if (data is Map) {
-      return _extractErrorMessage(Map<String, dynamic>.from(data));
+      return extractErrorMessage(Map<String, dynamic>.from(data));
     }
 
     if (data is String && data.trim().isNotEmpty) {
@@ -798,67 +822,6 @@ class BookingsRepository {
     }
 
     return fallback;
-  }
-
-  String _extractErrorMessage(Map<String, dynamic> root) {
-    final error = root['error'];
-
-    if (error is Map) {
-      final mapError = Map<String, dynamic>.from(error);
-
-      final msg = _extractLocalizedText(mapError['message']);
-      if (msg.isNotEmpty) return msg;
-
-      final details = mapError['details'];
-
-      if (details is List && details.isNotEmpty) {
-        for (final item in details) {
-          if (item is Map) {
-            final detailMessage = _extractLocalizedText(item['message']);
-            if (detailMessage.isNotEmpty) return detailMessage;
-          }
-
-          final text = item?.toString().trim();
-          if (text != null && text.isNotEmpty) return text;
-        }
-      }
-
-      if (details is String && details.trim().isNotEmpty) {
-        return details.trim();
-      }
-
-      final code = mapError['code']?.toString().trim();
-      if (code != null && code.isNotEmpty) return code;
-    }
-
-    final errors = root['errors'];
-    if (errors is List && errors.isNotEmpty) {
-      final joined = errors
-          .map((e) => e.toString().trim())
-          .where((e) => e.isNotEmpty)
-          .join(', ');
-      if (joined.isNotEmpty) return joined;
-    }
-
-    final message = _extractLocalizedText(root['message']);
-    if (message.isNotEmpty) return message;
-
-    return 'Failed to load bookings';
-  }
-
-  String _extractLocalizedText(dynamic value) {
-    if (value is Map) {
-      final ar = value['ar']?.toString().trim();
-      final en = value['en']?.toString().trim();
-
-      if (ar != null && ar.isNotEmpty) return ar;
-      if (en != null && en.isNotEmpty) return en;
-    }
-
-    final text = value?.toString().trim();
-    if (text != null && text.isNotEmpty) return text;
-
-    return '';
   }
 
   String _isoDate(DateTime d) {

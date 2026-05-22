@@ -1,3 +1,4 @@
+import 'package:football/core/errors/api_exception.dart';
 import 'package:football/core/network/api_client.dart';
 
 class WalletRepository {
@@ -6,19 +7,25 @@ class WalletRepository {
   WalletRepository(this.api);
 
   Future<WalletModel> getWallet() async {
-    final res = await api.dio.get('wallet');
+    try {
+      final res = await api.get('wallet');
 
-    final root = _asMap(res.data);
-    if (root == null) {
-      throw Exception('Invalid wallet response: expected JSON object');
+      final root = _asMap(res.data);
+      if (root == null) {
+        throw ApiException(message: 'Invalid wallet response: expected JSON object');
+      }
+
+      if (root['success'] == false) {
+        throw ApiException(message: _extractMessage(root));
+      }
+
+      final data = _asMap(root['data']) ?? <String, dynamic>{};
+      return WalletModel.fromJson(data);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException(message: e.toString());
     }
-
-    if (root['success'] == false) {
-      throw Exception(_extractMessage(root));
-    }
-
-    final data = _asMap(root['data']) ?? <String, dynamic>{};
-    return WalletModel.fromJson(data);
   }
 
   Future<WalletTransactionsResult> getTransactions({
@@ -28,56 +35,64 @@ class WalletRepository {
     DateTime? startDate,
     DateTime? endDate,
   }) async {
-    final normalizedType = _normalizeType(type);
+    try {
+      final normalizedType = _normalizeType(type);
 
-    final res = await api.dio.get(
-      'wallet/transactions',
-      queryParameters: {
-        'page': page,
-        'limit': limit,
-        if (normalizedType != null) 'type': normalizedType,
-        if (startDate != null) 'startDate': startDate.toIso8601String(),
-        if (endDate != null) 'endDate': endDate.toIso8601String(),
-      },
-    );
+      final res = await api.get(
+        'wallet/transactions',
+        queryParameters: {
+          'page': page,
+          'limit': limit,
+          if (normalizedType != null) 'type': normalizedType,
+          if (startDate != null) 'startDate': startDate.toIso8601String(),
+          if (endDate != null) 'endDate': endDate.toIso8601String(),
+        },
+      );
 
-    final root = _asMap(res.data);
-    if (root == null) {
-      throw Exception('Invalid transactions response: expected JSON object');
+      final root = _asMap(res.data);
+      if (root == null) {
+        throw ApiException(
+          message: 'Invalid transactions response: expected JSON object',
+        );
+      }
+
+      if (root['success'] == false) {
+        throw ApiException(message: _extractMessage(root));
+      }
+
+      final data = _asMap(root['data']) ?? <String, dynamic>{};
+
+      final rawTx = (data['transactions'] is List)
+          ? data['transactions'] as List
+          : const [];
+
+      final rawPagination = (data['pagination'] is Map)
+          ? data['pagination'] as Map
+          : const <String, dynamic>{};
+
+      final tx = rawTx
+          .whereType<Map>()
+          .map(
+            (e) => WalletTransactionModel.fromJson(
+              _asMap(e) ?? <String, dynamic>{},
+            ),
+          )
+          .toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      final pagination = WalletPaginationModel.fromJson(
+        _asMap(rawPagination) ?? <String, dynamic>{},
+      );
+
+      return WalletTransactionsResult(
+        transactions: tx,
+        pagination: pagination,
+      );
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException(message: e.toString());
     }
-
-    if (root['success'] == false) {
-      throw Exception(_extractMessage(root));
-    }
-
-    final data = _asMap(root['data']) ?? <String, dynamic>{};
-
-    final rawTx = (data['transactions'] is List)
-        ? data['transactions'] as List
-        : const [];
-
-    final rawPagination = (data['pagination'] is Map)
-        ? data['pagination'] as Map
-        : const <String, dynamic>{};
-
-    final tx = rawTx
-        .whereType<Map>()
-        .map(
-          (e) => WalletTransactionModel.fromJson(
-            _asMap(e) ?? <String, dynamic>{},
-          ),
-        )
-        .toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-    final pagination = WalletPaginationModel.fromJson(
-      _asMap(rawPagination) ?? <String, dynamic>{},
-    );
-
-    return WalletTransactionsResult(
-      transactions: tx,
-      pagination: pagination,
-    );
   }
 
   String? _normalizeType(String? type) {

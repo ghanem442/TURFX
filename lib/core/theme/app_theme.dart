@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
-  // Brand
-  static const green = Color(0xFF2E7D32);
-  static const orange = Color(0xFFF2992E);
+  // Brand - Bold & Sporty (Nike/ESPN style)
+  static const green = Color(0xFF00C853); // Brighter, more energetic
+  static const darkGreen = Color(0xFF007C30); // For gradients
+  static const orange = Color(0xFFFF6D00); // Stronger CTA color
 
   // Light
   static const bg = Color(0xFFF5F7FA);
@@ -13,12 +14,13 @@ class AppColors {
   static const subText = Color(0xFF6B7280);
   static const border = Color(0xFFE5E7EB);
 
-  // Dark
-  static const darkBg = Color(0xFF0F172A);
-  static const darkCard = Color(0xFF182235);
-  static const darkText = Color(0xFFE5E7EB);
-  static const darkSubText = Color(0xFF9CA3AF);
-  static const darkBorder = Color(0xFF263449);
+  // Dark - Near-black sporty theme
+  static const darkBg = Color(0xFF0D0D0D); // Near-black main bg
+  static const darkCard = Color(0xFF1A1A1A); // Dark card bg
+  static const darkSurface = Color(0xFF242424); // Surface elements
+  static const darkText = Color(0xFFFFFFFF); // Pure white text
+  static const darkSubText = Color(0xFF9E9E9E); // Subtle gray
+  static const darkBorder = Color(0xFF2A2A2A);
 }
 
 class AppTheme {
@@ -174,7 +176,10 @@ class AppTheme {
 
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.darkCard,
-        contentTextStyle: const TextStyle(color: AppColors.darkText),
+        contentTextStyle: const TextStyle(
+          color: AppColors.darkText,
+          fontWeight: FontWeight.w700,
+        ),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -235,17 +240,43 @@ class AppTheme {
     final color = isDark ? AppColors.darkText : AppColors.text;
     final subColor = isDark ? AppColors.darkSubText : AppColors.subText;
 
-    return GoogleFonts.poppinsTextTheme(base).copyWith(
+    // Use Rajdhani for bold sporty look with Arabic support
+    return GoogleFonts.rajdhaniTextTheme(base).copyWith(
       headlineLarge: base.headlineLarge?.copyWith(
         fontWeight: FontWeight.w800,
         color: color,
+        letterSpacing: 0.5,
+      ),
+      headlineMedium: base.headlineMedium?.copyWith(
+        fontWeight: FontWeight.w700,
+        color: color,
+        letterSpacing: 0.3,
       ),
       titleLarge: base.titleLarge?.copyWith(
         fontWeight: FontWeight.w700,
         color: color,
+        letterSpacing: 0.2,
       ),
-      bodyMedium: base.bodyMedium?.copyWith(color: color),
-      bodySmall: base.bodySmall?.copyWith(color: subColor),
+      titleMedium: base.titleMedium?.copyWith(
+        fontWeight: FontWeight.w600,
+        color: color,
+      ),
+      bodyLarge: base.bodyLarge?.copyWith(
+        color: color,
+        fontWeight: FontWeight.w500,
+      ),
+      bodyMedium: base.bodyMedium?.copyWith(
+        color: color,
+        fontWeight: FontWeight.w500,
+      ),
+      bodySmall: base.bodySmall?.copyWith(
+        color: subColor,
+        fontWeight: FontWeight.w500,
+      ),
+      labelLarge: base.labelLarge?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.5,
+      ),
     );
   }
 }

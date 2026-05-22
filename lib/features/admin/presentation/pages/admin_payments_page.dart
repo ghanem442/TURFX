@@ -117,9 +117,11 @@ class _AdminPaymentsPageState extends ConsumerState<AdminPaymentsPage> {
       },
     );
 
-    controller.dispose();
-
-    if (reason == null || reason.trim().isEmpty) return;
+    if (reason == null || reason.trim().isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
 
     try {
       await notifier.reject(

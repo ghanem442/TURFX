@@ -9,93 +9,12 @@ import 'package:football/features/fields/data/models/create_field_request.dart';
 import 'package:football/features/fields/data/models/create_field_response_model.dart';
 import 'package:football/features/owner/data/models/owner_bulk_slot_models.dart';
 import 'package:football/features/owner/data/models/owner_fields_response_model.dart';
+import 'package:football/core/utils/error_utils.dart';
 
 class OwnerRepository {
   final ApiClient api;
 
   OwnerRepository(this.api);
-
-  String _extractErrorMessage(dynamic raw) {
-    const fallback = 'Failed to load data';
-
-    if (raw is Map) {
-      final error = raw['error'];
-
-      if (error is Map) {
-        final details = error['details'];
-
-        if (details is List && details.isNotEmpty) {
-          final firstDetail = details.first;
-
-          if (firstDetail is Map) {
-            final detailMessage = firstDetail['message'];
-
-            if (detailMessage is Map) {
-              final ar = detailMessage['ar']?.toString().trim();
-              final en = detailMessage['en']?.toString().trim();
-
-              if (ar != null && ar.isNotEmpty) return ar;
-              if (en != null && en.isNotEmpty) return en;
-            }
-
-            final plainMessage = firstDetail['message']?.toString().trim();
-            if (plainMessage != null && plainMessage.isNotEmpty) {
-              return plainMessage;
-            }
-          }
-        }
-
-        final msg = error['message'];
-
-        if (msg is Map) {
-          final ar = msg['ar']?.toString().trim();
-          final en = msg['en']?.toString().trim();
-
-          if (ar != null && ar.isNotEmpty) return ar;
-          if (en != null && en.isNotEmpty) return en;
-        }
-
-        final code = error['code']?.toString().trim();
-        if (code != null && code.isNotEmpty) return code;
-      }
-
-      final message = raw['message'];
-
-      if (message is Map) {
-        final ar = message['ar']?.toString().trim();
-        final en = message['en']?.toString().trim();
-
-        if (ar != null && ar.isNotEmpty) return ar;
-        if (en != null && en.isNotEmpty) return en;
-      }
-
-      final text = raw['message']?.toString().trim();
-      if (text != null && text.isNotEmpty) return text;
-    }
-
-    if (raw is String && raw.trim().isNotEmpty) {
-      return raw.trim();
-    }
-
-    return fallback;
-  }
-
-  String _extractLocalizedMessage(dynamic raw) {
-    if (raw is Map) {
-      final ar = raw['ar']?.toString().trim();
-      final en = raw['en']?.toString().trim();
-
-      if (ar != null && ar.isNotEmpty) return ar;
-      if (en != null && en.isNotEmpty) return en;
-    }
-
-    final text = raw?.toString().trim();
-    if (text != null && text.isNotEmpty) {
-      return text;
-    }
-
-    return '';
-  }
 
   String _isoDate(DateTime d) {
     final x = d.toLocal();
@@ -135,7 +54,7 @@ class OwnerRepository {
         debugPrint('[CREATE_FIELD] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[CREATE_FIELD] unexpected error=$e');
@@ -189,7 +108,7 @@ class OwnerRepository {
         debugPrint('[UPLOAD_FIELD_IMAGE] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[UPLOAD_FIELD_IMAGE] unexpected error=$e');
@@ -231,7 +150,7 @@ class OwnerRepository {
         data: payload,
       );
     } on DioException catch (e) {
-      throw Exception(_extractErrorMessage(e.response?.data));
+      throw Exception(extractErrorMessage(e.response?.data));
     } catch (e) {
       throw Exception('Failed to update field');
     }
@@ -249,7 +168,7 @@ class OwnerRepository {
         'fields/$id',
       );
     } on DioException catch (e) {
-      throw Exception(_extractErrorMessage(e.response?.data));
+      throw Exception(extractErrorMessage(e.response?.data));
     } catch (e) {
       throw Exception('Failed to delete field');
     }
@@ -271,7 +190,7 @@ class OwnerRepository {
         'fields/$fid/images/$iid',
       );
     } on DioException catch (e) {
-      throw Exception(_extractErrorMessage(e.response?.data));
+      throw Exception(extractErrorMessage(e.response?.data));
     } catch (e) {
       throw Exception('Failed to delete image');
     }
@@ -315,7 +234,7 @@ class OwnerRepository {
         debugPrint('[OWNER_FIELDS] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[OWNER_FIELDS] unexpected error=$e');
@@ -377,7 +296,12 @@ class OwnerRepository {
         debugPrint('[OWNER_TIME_SLOTS] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      // Handle rate limit with a clear message
+      if (status == 429) {
+        throw Exception('Too many requests, please wait a moment');
+      }
+
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[OWNER_TIME_SLOTS] unexpected error=$e');
@@ -430,7 +354,12 @@ class OwnerRepository {
         debugPrint('[CREATE_TIME_SLOT] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      // Handle rate limit with a clear message
+      if (status == 429) {
+        throw Exception('Too many requests, please wait a moment');
+      }
+
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[CREATE_TIME_SLOT] unexpected error=$e');
@@ -495,7 +424,12 @@ class OwnerRepository {
         debugPrint('[BULK_CREATE_TIME_SLOTS] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      // Handle rate limit with a clear message
+      if (status == 429) {
+        throw Exception('Too many requests, please wait a moment');
+      }
+
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[BULK_CREATE_TIME_SLOTS] unexpected error=$e');
@@ -549,7 +483,7 @@ class OwnerRepository {
         debugPrint('[UPDATE_TIME_SLOT] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[UPDATE_TIME_SLOT] unexpected error=$e');
@@ -586,7 +520,7 @@ class OwnerRepository {
         debugPrint('[DELETE_TIME_SLOT] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[DELETE_TIME_SLOT] unexpected error=$e');
@@ -667,7 +601,7 @@ class OwnerRepository {
               totalPages: 1,
             );
 
-      final resolvedMessage = _extractLocalizedMessage(root['message']);
+      final resolvedMessage = extractErrorMessage(root['message']);
 
       return OwnerBookingsPageResult(
         success: root['success'] == true,
@@ -685,7 +619,7 @@ class OwnerRepository {
         debugPrint('[OWNER_BOOKINGS] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[OWNER_BOOKINGS] unexpected error=$e');
@@ -734,7 +668,7 @@ class OwnerRepository {
         debugPrint('[OWNER_BOOKING_DETAILS] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[OWNER_BOOKING_DETAILS] unexpected error=$e');
@@ -788,7 +722,7 @@ class OwnerRepository {
         debugPrint('[OWNER_QR_VALIDATE] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[OWNER_QR_VALIDATE] unexpected error=$e');
@@ -842,7 +776,7 @@ class OwnerRepository {
         debugPrint('[OWNER_BOOKING_VERIFY] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[OWNER_BOOKING_VERIFY] unexpected error=$e');
@@ -892,7 +826,7 @@ class OwnerRepository {
         debugPrint('[OWNER_CANCEL_BOOKING] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[OWNER_CANCEL_BOOKING] unexpected error=$e');
@@ -935,7 +869,7 @@ class OwnerRepository {
         debugPrint('[OWNER_NO_SHOW] DioException data=$data');
       }
 
-      throw Exception(_extractErrorMessage(data));
+      throw Exception(extractErrorMessage(data));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[OWNER_NO_SHOW] unexpected error=$e');
@@ -1003,8 +937,13 @@ class OwnerCheckInResult {
   });
 
   factory OwnerCheckInResult.fromJson(Map<String, dynamic> json) {
-    final rawData = json['data'];
+    var rawData = json['data'];
     final rawMessage = json['message'];
+
+    // Unwrap nested data.data if backend wraps payload one level deeper
+    if (rawData is Map && rawData['data'] is Map) {
+      rawData = rawData['data'];
+    }
 
     String resolvedMessage = '';
     if (rawMessage is Map) {

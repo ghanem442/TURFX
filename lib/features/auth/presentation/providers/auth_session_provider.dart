@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:football/core/storage/providers.dart';
+import 'package:football/core/routing/router_refresh.dart';
 
 enum AuthStatus { unknown, authenticated, unauthenticated }
 
@@ -72,9 +74,11 @@ class AuthSession extends Notifier<AuthStatus> {
     try {
       final accessFuture = storage.getAccessToken();
       final refreshFuture = storage.getRefreshToken();
+      final userDataFuture = storage.getUserData();
 
       final access = await accessFuture.timeout(_bootTimeout);
       final refresh = await refreshFuture.timeout(_bootTimeout);
+      final userDataRaw = await userDataFuture.timeout(_bootTimeout);
 
       final accessOk = access != null && access.trim().isNotEmpty;
       final refreshOk = refresh != null && refresh.trim().isNotEmpty;
@@ -84,6 +88,7 @@ class AuthSession extends Notifier<AuthStatus> {
 
       if (accessOk) {
         state = AuthStatus.authenticated;
+        _restoreUser(userDataRaw);
       } else {
         state = AuthStatus.unauthenticated;
         ref.read(authUserProvider.notifier).state = null;
@@ -104,6 +109,7 @@ class AuthSession extends Notifier<AuthStatus> {
       if (kDebugMode) {
         debugPrint('Auth boot failed -> unauthenticated. Error: $e');
       }
+      ref.read(routerRefreshProvider).refresh();
     }
   }
 
@@ -120,8 +126,6 @@ class AuthSession extends Notifier<AuthStatus> {
 
     ref.read(accessTokenProvider.notifier).state = accessToken;
     ref.read(refreshTokenProvider.notifier).state = refreshToken;
-
-    state = AuthStatus.authenticated;
   }
 
   void saveUser({
@@ -131,13 +135,40 @@ class AuthSession extends Notifier<AuthStatus> {
     String? role,
     String? id,
   }) {
-    ref.read(authUserProvider.notifier).state = AuthUser(
+    final user = AuthUser(
       email: email.trim(),
       isVerified: isVerified,
       name: name?.trim(),
       role: role,
       id: id,
     );
+    ref.read(authUserProvider.notifier).state = user;
+
+    final storage = ref.read(secureStorageProvider);
+    final payload = jsonEncode({
+      'email': user.email,
+      'isVerified': user.isVerified,
+      if (user.name != null) 'name': user.name,
+      if (user.role != null) 'role': user.role,
+      if (user.id != null) 'id': user.id,
+    });
+    storage.saveUserData(payload);
+  }
+
+  void _restoreUser(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return;
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      ref.read(authUserProvider.notifier).state = AuthUser(
+        email: (map['email'] ?? '').toString(),
+        isVerified: map['isVerified'] == true,
+        name: map['name']?.toString(),
+        role: map['role']?.toString(),
+        id: map['id']?.toString(),
+      );
+    } catch (_) {
+      // ignore corrupt persisted user data
+    }
   }
 
   void setUserFromAuthResponse(Map<String, dynamic> data) {
@@ -167,22 +198,25 @@ class AuthSession extends Notifier<AuthStatus> {
 
     ref.read(authUserProvider.notifier).state =
         current.copyWith(isVerified: true);
+    ref.read(routerRefreshProvider).refresh();
   }
 
   Future<void> logout() async {
     final storage = ref.read(secureStorageProvider);
 
-    await storage.clearTokens();
+    await storage.clearAll();
 
     ref.read(accessTokenProvider.notifier).state = null;
     ref.read(refreshTokenProvider.notifier).state = null;
     ref.read(authUserProvider.notifier).state = null;
 
     state = AuthStatus.unauthenticated;
+    ref.read(routerRefreshProvider).refresh();
   }
 
   void markAuthenticated() {
     state = AuthStatus.authenticated;
+    ref.read(routerRefreshProvider).refresh();
   }
 }
 

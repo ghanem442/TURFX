@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:football/core/utils/error_utils.dart';
+import 'package:football/core/widgets/app_button.dart';
 import 'package:football/features/wallet/data/wallet_repository.dart';
+import 'package:football/core/routing/app_navigation.dart';
 import 'package:go_router/go_router.dart';
 
 import '../providers/wallet_providers.dart';
@@ -76,13 +79,17 @@ class _WalletPageState extends ConsumerState<WalletPage> {
     final walletAsync = ref.watch(walletProvider);
     final previousData = walletAsync.valueOrNull;
 
+    final canPop = context.canPop();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Wallet'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
-        ),
+        leading: canPop
+            ? BackButton(
+                onPressed: () => context.safePop(fallback: '/owner'),
+              )
+            : null,
+        automaticallyImplyLeading: canPop,
         actions: [
           IconButton(
             tooltip: 'Home',
@@ -607,7 +614,7 @@ class _MetaChip extends StatelessWidget {
 
 class _ErrorState extends StatelessWidget {
   final String error;
-  final VoidCallback onRetry;
+  final Future<void> Function() onRetry;
 
   const _ErrorState({
     required this.error,
@@ -629,9 +636,10 @@ class _ErrorState extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
-            ElevatedButton(
+            AppButton(
+              text: 'Retry',
+              width: 140,
               onPressed: onRetry,
-              child: const Text('Retry'),
             ),
           ],
         ),
@@ -706,9 +714,10 @@ String _transactionStatusLabel(String status) {
 }
 
 String _friendlyError(Object error) {
-  final text = error.toString().replaceFirst('Exception: ', '').trim();
-  if (text.isEmpty) return 'Failed to load wallet data';
-  return text;
+  return friendlyErrorMessage(
+    error,
+    fallback: 'تعذر تحميل بيانات المحفظة',
+  );
 }
 
 String _money(double value) {

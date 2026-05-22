@@ -34,6 +34,12 @@ dependencies:
   firebase_core: ^4.6.0
   cloud_firestore: ^6.2.0
   geolocator: ^14.0.2
+  
+  # UI/UX Enhancements
+  shimmer: ^3.0.0
+  animate_do: ^3.3.4
+  lottie: ^3.1.2
+  flutter_slidable: ^3.1.1
 
 dev_dependencies:
   flutter_test:
@@ -52,6 +58,7 @@ flutter:
 
   assets:
     - assets/icon/icon.png
+    - assets/animations/
 
 flutter_launcher_icons:
   android: true

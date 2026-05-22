@@ -2,18 +2,21 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:football/core/widgets/app_button.dart';
 import 'package:football/features/fields/data/models/create_field_request.dart';
 import 'package:football/features/fields/data/models/field_model.dart';
+import 'package:football/features/fields/presentation/providers/fields_providers.dart';
 import 'package:football/features/owner/presentation/providers/owner_providers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 class AddFieldPage extends ConsumerStatefulWidget {
+  final String? fieldId;
   final FieldModel? field;
 
-  const AddFieldPage({super.key, this.field});
+  const AddFieldPage({super.key, this.fieldId, this.field});
 
-  bool get isEdit => field != null;
+  bool get isEdit => field != null || (fieldId != null && fieldId!.trim().isNotEmpty);
 
   @override
   ConsumerState<AddFieldPage> createState() => _AddFieldPageState();
@@ -36,27 +39,31 @@ class _AddFieldPageState extends ConsumerState<AddFieldPage> {
 
   bool _isSubmitting = false;
   String? _deletingImageId;
+  bool _fieldLoaded = false;
 
   @override
   void initState() {
     super.initState();
+    _populateFromField(widget.field);
+  }
 
-    final field = widget.field;
-    if (field != null) {
-      _nameController.text = field.displayName;
-      _descriptionController.text = field.description ?? '';
-      _addressController.text = field.displayAddress;
-      _latitudeController.text = field.latitude.toString();
-      _longitudeController.text = field.longitude.toString();
-      _basePriceController.text =
-          field.basePrice == null ? '' : field.basePrice.toString();
-      _commissionRateController.text =
-          field.commissionRate == null ? '' : field.commissionRate.toString();
+  void _populateFromField(FieldModel? field) {
+    if (field == null) return;
+    _nameController.text = field.displayName;
+    _descriptionController.text = field.description ?? '';
+    _addressController.text = field.displayAddress;
+    _latitudeController.text = field.latitude.toString();
+    _longitudeController.text = field.longitude.toString();
+    _basePriceController.text =
+        field.basePrice == null ? '' : field.basePrice.toString();
+    _commissionRateController.text =
+        field.commissionRate == null ? '' : field.commissionRate.toString();
 
-      _existingImages.addAll(
-        [...field.images]..sort((a, b) => a.order.compareTo(b.order)),
-      );
-    }
+    _existingImages.clear();
+    _existingImages.addAll(
+      [...field.images]..sort((a, b) => a.order.compareTo(b.order)),
+    );
+    _fieldLoaded = true;
   }
 
   @override
@@ -222,7 +229,7 @@ class _AddFieldPageState extends ConsumerState<AddFieldPage> {
 
     try {
       await repo.deleteFieldImage(
-        fieldId: widget.field!.id,
+        fieldId: (widget.field?.id ?? widget.fieldId)!,
         imageId: image.id,
       );
 
@@ -289,7 +296,7 @@ class _AddFieldPageState extends ConsumerState<AddFieldPage> {
 
       if (widget.isEdit) {
         await repo.updateField(
-          fieldId: widget.field!.id,
+          fieldId: (widget.field?.id ?? widget.fieldId)!,
           name: request.name,
           description: request.description,
           address: request.address,
@@ -299,7 +306,7 @@ class _AddFieldPageState extends ConsumerState<AddFieldPage> {
           commissionRate: request.commissionRate,
         );
 
-        fieldId = widget.field!.id;
+        fieldId = (widget.field?.id ?? widget.fieldId)!;
       } else {
         final result = await repo.createField(request);
         fieldId = result.data.id;
@@ -592,6 +599,27 @@ class _AddFieldPageState extends ConsumerState<AddFieldPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.field == null &&
+        widget.fieldId != null &&
+        widget.fieldId!.trim().isNotEmpty &&
+        !_fieldLoaded) {
+      final async = ref.watch(fieldByIdProvider(widget.fieldId!));
+      final field = async.valueOrNull;
+      if (field != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() => _populateFromField(field));
+          }
+        });
+      }
+      if (async.isLoading) {
+        return Scaffold(
+          appBar: AppBar(title: Text(widget.isEdit ? 'Edit Field' : 'Add Field')),
+          body: const Center(child: CircularProgressIndicator()),
+        );
+      }
+    }
+
     final helperText = _isSubmitting
         ? (_selectedImages.isEmpty
             ? (widget.isEdit ? 'Updating field...' : 'Creating field...')
@@ -751,31 +779,18 @@ class _AddFieldPageState extends ConsumerState<AddFieldPage> {
               const SizedBox(height: 24),
               _buildImagesSection(),
               const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: _isSubmitting ? null : _submit,
-                icon: _isSubmitting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(
-                        widget.isEdit
-                            ? Icons.save_outlined
-                            : Icons.add_business_outlined,
-                      ),
-                label: Text(
-                  _isSubmitting
-                      ? 'Please wait...'
-                      : widget.isEdit
-                          ? 'Update Field'
-                          : 'Create Field',
-                ),
+              AppButton(
+                text: widget.isEdit ? 'Update Field' : 'Create Field',
+                icon: widget.isEdit
+                    ? Icons.save_outlined
+                    : Icons.add_business_outlined,
+                onPressed: _submit,
               ),
               const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: _isSubmitting ? null : () => context.pop(),
-                child: const Text('Cancel'),
+              AppButton(
+                text: 'Cancel',
+                outlined: true,
+                onPressed: () async => context.pop(),
               ),
             ],
           ),

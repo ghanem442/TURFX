@@ -20,12 +20,23 @@ class OwnerTimeSlotsPage extends ConsumerStatefulWidget {
 
 class _OwnerTimeSlotsPageState extends ConsumerState<OwnerTimeSlotsPage> {
   late DateTime _selectedDate;
+  // Bug Fix 3: Use a key to control FutureBuilder refresh instead of setState
+  int _refreshKey = 0;
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _selectedDate = DateTime(now.year, now.month, now.day);
+  }
+
+  void _refreshList({DateTime? forDate}) {
+    setState(() {
+      if (forDate != null) {
+        _selectedDate = forDate;
+      }
+      _refreshKey++;
+    });
   }
 
   Future<void> _pickDate() async {
@@ -45,7 +56,7 @@ class _OwnerTimeSlotsPageState extends ConsumerState<OwnerTimeSlotsPage> {
   }
 
   Future<void> _openAddSlot() async {
-    final result = await context.push<bool>(
+    final result = await context.push<dynamic>(
       '/owner/field-slots/edit',
       extra: {
         'fieldId': widget.fieldId,
@@ -54,27 +65,36 @@ class _OwnerTimeSlotsPageState extends ConsumerState<OwnerTimeSlotsPage> {
       },
     );
 
-    if (result == true && mounted) {
-      setState(() {});
+    // Bug Fix 1: Refresh with the date from the result, not today's date
+    if (result is Map && result['success'] == true && mounted) {
+      final dateFromResult = result['date'] as DateTime?;
+      _refreshList(forDate: dateFromResult ?? _selectedDate);
     }
   }
 
   Future<void> _openBulkSlots() async {
-    final result = await context.push<bool>(
+    // Bug Fix 4: Pass the selected date to bulk creation
+    final result = await context.push<dynamic>(
       '/owner/field-slots/bulk',
       extra: {
         'fieldId': widget.fieldId,
         'fieldName': widget.fieldName,
+        'selectedDate': _selectedDate,
       },
     );
 
-    if (result == true && mounted) {
-      setState(() {});
+    // Bug Fix 1: Refresh with the date from the result
+    if (result is Map && result['success'] == true && mounted) {
+      final dateFromResult = result['date'] as DateTime?;
+      _refreshList(forDate: dateFromResult ?? _selectedDate);
+    } else if (result == true && mounted) {
+      // Fallback for old boolean return
+      _refreshList();
     }
   }
 
   Future<void> _openEditSlot(TimeSlotModel slot) async {
-    final result = await context.push<bool>(
+    final result = await context.push<dynamic>(
       '/owner/field-slots/edit',
       extra: {
         'fieldId': widget.fieldId,
@@ -83,8 +103,10 @@ class _OwnerTimeSlotsPageState extends ConsumerState<OwnerTimeSlotsPage> {
       },
     );
 
-    if (result == true && mounted) {
-      setState(() {});
+    // Bug Fix 1: Refresh with the date from the result
+    if (result is Map && result['success'] == true && mounted) {
+      final dateFromResult = result['date'] as DateTime?;
+      _refreshList(forDate: dateFromResult ?? _selectedDate);
     }
   }
 
@@ -124,17 +146,94 @@ class _OwnerTimeSlotsPageState extends ConsumerState<OwnerTimeSlotsPage> {
         const SnackBar(content: Text('Time slot deleted successfully')),
       );
 
-      setState(() {});
+      // Bug Fix 3: Use _refreshList instead of setState
+      _refreshList();
     } catch (e) {
       if (!mounted) return;
 
+      final errorMessage = e.toString().replaceFirst('Exception: ', '').trim();
+      final friendlyMessage = _getFriendlyErrorMessage(errorMessage);
+      
       messenger.showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(friendlyMessage),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     }
+  }
+
+  String _getFriendlyErrorMessage(String error) {
+    final lower = error.toLowerCase();
+    
+    // Check for common error patterns
+    if (lower.contains('network') || lower.contains('connection')) {
+      return 'Network error. Please check your connection and try again.';
+    }
+    if (lower.contains('timeout')) {
+      return 'Request timed out. Please try again.';
+    }
+    if (lower.contains('unauthorized') || lower.contains('401')) {
+      return 'Session expired. Please log in again.';
+    }
+    if (lower.contains('forbidden') || lower.contains('403')) {
+      return 'You do not have permission to perform this action.';
+    }
+    if (lower.contains('not found') || lower.contains('404')) {
+      return 'Resource not found. Please try again.';
+    }
+    if (lower.contains('server') || lower.contains('500') || lower.contains('502') || lower.contains('503')) {
+      return 'Server error. Please try again later.';
+    }
+    if (lower.contains('429') || lower.contains('too many requests') || lower.contains('toomanyrequests')) {
+      return 'Too many requests, please wait a moment';
+    }
+    
+    // If error looks like a backend key (no spaces, has dots), show generic message
+    if (!error.contains(' ') && error.contains('.')) {
+      return 'Something went wrong, please try again';
+    }
+    
+    // If we have a readable message, show it
+    if (error.isNotEmpty && error.length < 200) {
+      return error;
+    }
+    
+    // Fallback
+    return 'Something went wrong, please try again';
+  }
+
+  IconData _getErrorIcon(String error) {
+    final lower = error.toLowerCase();
+    
+    if (lower.contains('network') || lower.contains('connection')) {
+      return Icons.wifi_off;
+    }
+    if (lower.contains('429') || lower.contains('too many requests')) {
+      return Icons.hourglass_empty;
+    }
+    if (lower.contains('unauthorized') || lower.contains('401')) {
+      return Icons.lock_outline;
+    }
+    if (lower.contains('server') || lower.contains('500')) {
+      return Icons.cloud_off;
+    }
+    
+    return Icons.error_outline;
+  }
+
+  Color _getErrorColor(String error) {
+    final lower = error.toLowerCase();
+    
+    if (lower.contains('429') || lower.contains('too many requests')) {
+      return Colors.orange;
+    }
+    if (lower.contains('unauthorized') || lower.contains('401')) {
+      return Colors.amber;
+    }
+    
+    return Colors.red;
   }
 
   @override
@@ -180,7 +279,9 @@ class _OwnerTimeSlotsPageState extends ConsumerState<OwnerTimeSlotsPage> {
           ),
         ],
       ),
+      // Bug Fix 3: Add key to FutureBuilder to control when it rebuilds
       body: FutureBuilder<List<TimeSlotModel>>(
+        key: ValueKey(_refreshKey),
         future: repo.getFieldTimeSlots(
           fieldId: widget.fieldId,
           startDate: _selectedDate,
@@ -198,21 +299,29 @@ class _OwnerTimeSlotsPageState extends ConsumerState<OwnerTimeSlotsPage> {
           }
 
           if (snapshot.hasError) {
+            final errorText = snapshot.error.toString();
+            final friendlyError = _getFriendlyErrorMessage(errorText);
+            
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.error_outline, size: 48),
+                    Icon(
+                      _getErrorIcon(errorText),
+                      size: 48,
+                      color: _getErrorColor(errorText),
+                    ),
                     const SizedBox(height: 12),
                     Text(
-                      snapshot.error.toString(),
+                      friendlyError,
                       textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 16),
                     ),
                     const SizedBox(height: 12),
                     FilledButton(
-                      onPressed: () => setState(() {}),
+                      onPressed: () => _refreshList(),
                       child: const Text('Retry'),
                     ),
                   ],
@@ -225,7 +334,7 @@ class _OwnerTimeSlotsPageState extends ConsumerState<OwnerTimeSlotsPage> {
             ..sort((a, b) => a.start.compareTo(b.start));
 
           return RefreshIndicator(
-            onRefresh: () async => setState(() {}),
+            onRefresh: () async => _refreshList(),
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),

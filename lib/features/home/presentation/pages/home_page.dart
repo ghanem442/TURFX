@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:football/core/theme/app_theme.dart';
+import 'package:football/core/utils/error_utils.dart';
+import 'package:football/core/widgets/app_button.dart';
+import 'package:football/core/widgets/fade_slide_in.dart';
 import 'package:football/core/theme/theme_mode_provider.dart';
 import 'package:football/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:football/features/fields/data/models/field_model.dart';
 import 'package:football/features/fields/presentation/providers/fields_providers.dart';
+import 'package:football/core/services/welcome_service.dart';
+import 'package:football/features/auth/presentation/providers/auth_session_provider.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -17,11 +22,47 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage> {
   final _searchCtrl = TextEditingController();
+  bool _welcomeShown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Show welcome animation after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showWelcomeIfNeeded();
+      
+      // Delay fields fetch to allow router to stabilize after login
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          ref.read(fieldsProvider);
+        }
+      });
+    });
+  }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _showWelcomeIfNeeded() async {
+    // Prevent multiple calls
+    if (_welcomeShown) return;
+    _welcomeShown = true;
+
+    // Get current user
+    final user = ref.read(authUserProvider);
+    
+    // Show welcome if user is logged in
+    if (user != null && mounted) {
+      await WelcomeService.showWelcomeAnimation(
+        context,
+        userName: user.name ?? 'User',
+        userRole: user.role ?? 'PLAYER',
+      );
+    }
   }
 
   Future<void> _refresh() async {
@@ -31,6 +72,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Don't watch immediately - let initState handle the delayed fetch
     final fieldsAsync = ref.watch(fieldsProvider);
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
@@ -39,6 +81,22 @@ class _HomePageState extends ConsumerState<HomePage> {
       appBar: AppBar(
         title: Text(l10n.appTitle),
         actions: [
+          // Test welcome animation button (للتجربة فقط)
+          IconButton(
+            icon: const Icon(Icons.celebration),
+            tooltip: 'Test Welcome',
+            onPressed: () async {
+              await WelcomeService.resetWelcomeCooldown();
+              final user = ref.read(authUserProvider);
+              if (mounted) {
+                await WelcomeService.forceShowWelcome(
+                  context,
+                  userName: user?.name ?? 'Test User',
+                  userRole: user?.role ?? 'PLAYER',
+                );
+              }
+            },
+          ),
           Consumer(
             builder: (context, ref, _) {
               final mode = ref.watch(themeModeProvider);
@@ -57,8 +115,34 @@ class _HomePageState extends ConsumerState<HomePage> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(
           child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(err.toString(), textAlign: TextAlign.center),
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, size: 52, color: Colors.red),
+                const SizedBox(height: 12),
+                const Text(
+                  'Failed to load fields',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _friendlyError(err),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                AppButton(
+                  text: 'Try Again',
+                  icon: Icons.refresh,
+                  width: 200,
+                  onPressed: _refresh,
+                ),
+              ],
+            ),
           ),
         ),
         data: (fields) {
@@ -124,11 +208,14 @@ class _HomePageState extends ConsumerState<HomePage> {
                   const SizedBox(height: 140),
                   const Center(child: Text('No fields found')),
                 ] else ...[
-                  _BigFieldCard(
-                    field: filtered.first,
-                    onTap: () => context.push(
-                      '/field/${filtered.first.id}',
-                      extra: filtered.first,
+                  FadeSlideIn(
+                    index: 0,
+                    child: _BigFieldCard(
+                      field: filtered.first,
+                      onTap: () => context.push(
+                        '/field/${filtered.first.id}',
+                        extra: filtered.first,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -144,16 +231,22 @@ class _HomePageState extends ConsumerState<HomePage> {
                           children: items
                               .take(6)
                               .map(
-                                (f) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: _SmallFieldCard(
-                                    field: f,
-                                    onTap: () => context.push(
-                                      '/field/${f.id}',
-                                      extra: f,
+                                (f) {
+                                  final i = items.indexOf(f) + 1;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: FadeSlideIn(
+                                      index: i,
+                                      child: _SmallFieldCard(
+                                        field: f,
+                                        onTap: () => context.push(
+                                          '/field/${f.id}',
+                                          extra: f,
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
+                                  );
+                                },
                               )
                               .toList(),
                         );
@@ -172,10 +265,13 @@ class _HomePageState extends ConsumerState<HomePage> {
                             ),
                         itemBuilder: (context, i) {
                           final f = items[i];
-                          return _SmallFieldCard(
-                            field: f,
-                            onTap: () =>
-                                context.push('/field/${f.id}', extra: f),
+                          return FadeSlideIn(
+                            index: i + 1,
+                            child: _SmallFieldCard(
+                              field: f,
+                              onTap: () =>
+                                  context.push('/field/${f.id}'),
+                            ),
                           );
                         },
                       );
@@ -621,4 +717,18 @@ String _priceText(FieldModel f) {
       : price.toStringAsFixed(2);
 
   return '$formatted EGP/hr';
+}
+
+String _friendlyError(Object e) {
+  final text = e.toString().toLowerCase();
+  if (text.contains('timeout') || text.contains('socket')) {
+    return 'انتهت مهلة الاتصال. تأكد من الإنترنت وحاول مرة أخرى.';
+  }
+  if (text.contains('connection refused') || text.contains('unable to resolve')) {
+    return 'لا يمكن الوصول للسيرفر. تأكد من الاتصال.';
+  }
+  return friendlyErrorMessage(
+    e,
+    fallback: 'تعذر تحميل الملاعب',
+  );
 }

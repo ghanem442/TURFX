@@ -15,12 +15,57 @@ class ApiClient {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
             },
-            sendTimeout: kIsWeb ? null : const Duration(seconds: 20),
-            connectTimeout: const Duration(seconds: 20),
-            receiveTimeout: const Duration(seconds: 30),
+            sendTimeout: kIsWeb ? null : const Duration(seconds: 120),
+            connectTimeout: const Duration(seconds: 60),
+            receiveTimeout: const Duration(seconds: 120),
           ),
         ) {
     _log('API BASE URL -> ${dio.options.baseUrl}');
+
+    // Retry on 429 (Too Many Requests) with exponential backoff
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (DioException err, ErrorInterceptorHandler handler) async {
+          final statusCode = err.response?.statusCode;
+          final extra = err.requestOptions.extra;
+          final retryCount = (extra['__retryCount'] as int?) ?? 0;
+
+          if (statusCode == 429 && retryCount < 3) {
+            final delay = Duration(seconds: 1 << retryCount);
+            _log(
+              '429 detected -> waiting ${delay.inSeconds}s '
+              'before retry #${retryCount + 1}',
+            );
+            await Future.delayed(delay);
+
+            try {
+              final response = await dio.request(
+                err.requestOptions.path,
+                data: err.requestOptions.data,
+                queryParameters: err.requestOptions.queryParameters,
+                options: Options(
+                  method: err.requestOptions.method,
+                  headers: err.requestOptions.headers,
+                  extra: {
+                    ...err.requestOptions.extra,
+                    '__retryCount': retryCount + 1,
+                  },
+                  responseType: err.requestOptions.responseType,
+                  contentType: err.requestOptions.contentType,
+                ),
+              );
+              handler.resolve(response);
+              return;
+            } catch (_) {
+              handler.next(err);
+              return;
+            }
+          }
+
+          handler.next(err);
+        },
+      ),
+    );
 
     // Logging
     dio.interceptors.add(
@@ -32,7 +77,7 @@ class ApiClient {
 
           _log('REQUEST -> ${options.method} ${options.uri}');
           _log('HEADERS -> ${_redactHeaders(options.headers)}');
-          _log('DATA -> ${options.data}');
+          _log('DATA -> ${_redactData(options.data)}');
           handler.next(options);
         },
         onResponse: (response, handler) {
@@ -70,7 +115,7 @@ class ApiClient {
   }
 
   static bool _validateStatus(int? status) {
-    return status != null && status < 600;
+    return status != null && status >= 200 && status < 300;
   }
 
   static void _log(String message) {
@@ -85,6 +130,28 @@ class ApiClient {
     final auth = copy['Authorization'];
     if (auth is String && auth.trim().isNotEmpty) {
       copy['Authorization'] = 'Bearer ***';
+    }
+    return copy.toString();
+  }
+
+  static String _redactData(dynamic data) {
+    if (data == null) return 'null';
+    if (data is! Map<String, dynamic>) return data.toString();
+    final copy = Map<String, dynamic>.from(data);
+    const sensitive = {
+      'password',
+      'cardNumber',
+      'cvv',
+      'cardCvv',
+      'pin',
+      'secret',
+      'token',
+    };
+    for (final key in copy.keys) {
+      final lower = key.toLowerCase();
+      if (sensitive.any((s) => lower.contains(s))) {
+        copy[key] = '***';
+      }
     }
     return copy.toString();
   }

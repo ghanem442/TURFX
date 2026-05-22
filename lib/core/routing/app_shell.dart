@@ -7,10 +7,8 @@ class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.navigationShell});
 
   void _goBranch(int index) {
-    // ✅ preserves state لكل تاب (IndexedStack)
     navigationShell.goBranch(
       index,
-      // لو ضغط على نفس التاب تاني: يرجّعه لأول صفحة في نفس الفرع
       initialLocation: index == navigationShell.currentIndex,
     );
   }
@@ -24,6 +22,7 @@ class AppShell extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: currentIndex,
         onDestinationSelected: _goBranch,
+        animationDuration: const Duration(milliseconds: 320),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),

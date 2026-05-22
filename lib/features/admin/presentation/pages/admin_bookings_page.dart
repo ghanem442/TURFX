@@ -389,10 +389,7 @@ class _BookingCard extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: () {
-        context.push(
-          '/admin/bookings/${booking.id}',
-          extra: booking,
-        );
+        context.push('/admin/bookings/${booking.id}');
       },
       child: Card(
         elevation: 0,

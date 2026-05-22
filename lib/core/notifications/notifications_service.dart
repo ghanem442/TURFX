@@ -244,7 +244,7 @@ class NotificationsService {
   }
 
   void _showInAppSnack(AppNotificationPayload payload) {
-    final context = AppRouter.rootNavigatorKey.currentContext;
+    final context = rootNavigatorKey.currentContext;
     if (context == null) return;
 
     final messenger = ScaffoldMessenger.maybeOf(context);
@@ -267,7 +267,7 @@ class NotificationsService {
   }
 
   void _navigateFromPayload(AppNotificationPayload payload) {
-    final context = AppRouter.rootNavigatorKey.currentContext;
+    final context = rootNavigatorKey.currentContext;
     if (context == null) return;
 
     switch (payload.type) {

@@ -8,6 +8,7 @@ typedef SaveTokens = Future<void> Function({
   String? refreshToken,
 });
 typedef Logout = Future<void> Function();
+typedef OnSessionExpired = void Function();
 
 class AuthInterceptor extends Interceptor {
   AuthInterceptor({
@@ -16,6 +17,7 @@ class AuthInterceptor extends Interceptor {
     required this.readRefreshToken,
     required this.saveTokens,
     required this.logout,
+    this.onSessionExpired,
   }) : _dio = dio;
 
   final Dio _dio;
@@ -23,8 +25,10 @@ class AuthInterceptor extends Interceptor {
   final ReadRefreshToken readRefreshToken;
   final SaveTokens saveTokens;
   final Logout logout;
+  final OnSessionExpired? onSessionExpired;
 
   bool _isRefreshing = false;
+  final List<_PendingRequest> _pendingRequests = [];
 
   bool _isAuthRefreshRequest(RequestOptions options) {
     final path = options.path.toLowerCase();
@@ -82,7 +86,8 @@ class AuthInterceptor extends Interceptor {
     }
 
     if (_isRefreshing) {
-      handler.next(err);
+      _log('401 detected -> refresh in progress, queuing request');
+      _pendingRequests.add(_PendingRequest(err: err, handler: handler));
       return;
     }
 
@@ -105,7 +110,7 @@ class AuthInterceptor extends Interceptor {
       final statusCode = res.statusCode;
 
       if (statusCode == null || statusCode >= 400 || raw is! Map) {
-        await logout();
+        await _clearPendingAndLogout();
         handler.next(err);
         return;
       }
@@ -144,46 +149,92 @@ class AuthInterceptor extends Interceptor {
 
       if (newAccess.isEmpty) {
         _log('Refresh failed: missing access token');
-        await logout();
+        await _clearPendingAndLogout();
         handler.next(err);
         return;
       }
 
       await saveTokens(accessToken: newAccess, refreshToken: newRefresh);
 
-      final retryOptions = Options(
-        method: request.method,
-        headers: Map<String, dynamic>.from(request.headers)
-          ..['Authorization'] = 'Bearer $newAccess',
-        responseType: request.responseType,
-        contentType: request.contentType,
-        extra: Map<String, dynamic>.from(request.extra)..['__retried__'] = true,
-        followRedirects: request.followRedirects,
-        receiveDataWhenStatusError: request.receiveDataWhenStatusError,
-        sendTimeout: request.sendTimeout,
-        receiveTimeout: request.receiveTimeout,
-        validateStatus: request.validateStatus,
-      );
-
-      _log('Retrying original request after refresh -> ${request.method} ${request.path}');
-
-      final retryResponse = await _dio.request(
-        request.path,
-        data: request.data,
-        queryParameters: request.queryParameters,
-        cancelToken: request.cancelToken,
-        options: retryOptions,
-        onReceiveProgress: request.onReceiveProgress,
-        onSendProgress: request.onSendProgress,
-      );
-
-      handler.resolve(retryResponse);
+      await _retryRequest(request, newAccess, handler);
+      await _retryPendingRequests(newAccess);
     } catch (e) {
       _log('Refresh exception -> $e');
-      await logout();
+      await _clearPendingAndLogout();
       handler.next(err);
     } finally {
       _isRefreshing = false;
     }
   }
+
+  Future<void> _retryRequest(
+    RequestOptions request,
+    String newAccess,
+    ErrorInterceptorHandler handler,
+  ) async {
+    final retryOptions = Options(
+      method: request.method,
+      headers: Map<String, dynamic>.from(request.headers)
+        ..['Authorization'] = 'Bearer $newAccess',
+      responseType: request.responseType,
+      contentType: request.contentType,
+      extra: Map<String, dynamic>.from(request.extra)..['__retried__'] = true,
+      followRedirects: request.followRedirects,
+      receiveDataWhenStatusError: request.receiveDataWhenStatusError,
+      sendTimeout: request.sendTimeout,
+      receiveTimeout: request.receiveTimeout,
+      validateStatus: request.validateStatus,
+    );
+
+    _log('Retrying original request after refresh -> ${request.method} ${request.path}');
+
+    final retryResponse = await _dio.request(
+      request.path,
+      data: request.data,
+      queryParameters: request.queryParameters,
+      cancelToken: request.cancelToken,
+      options: retryOptions,
+      onReceiveProgress: request.onReceiveProgress,
+      onSendProgress: request.onSendProgress,
+    );
+
+    handler.resolve(retryResponse);
+  }
+
+  Future<void> _retryPendingRequests(String newAccess) async {
+    final pending = List<_PendingRequest>.from(_pendingRequests);
+    _pendingRequests.clear();
+
+    for (final pendingRequest in pending) {
+      try {
+        await _retryRequest(
+          pendingRequest.err.requestOptions,
+          newAccess,
+          pendingRequest.handler,
+        );
+      } catch (e) {
+        pendingRequest.handler.next(pendingRequest.err);
+      }
+    }
+  }
+
+  Future<void> _clearPendingAndLogout() async {
+    final pending = List<_PendingRequest>.from(_pendingRequests);
+    _pendingRequests.clear();
+
+    await logout();
+
+    onSessionExpired?.call();
+
+    for (final pendingRequest in pending) {
+      pendingRequest.handler.next(pendingRequest.err);
+    }
+  }
+}
+
+class _PendingRequest {
+  final DioException err;
+  final ErrorInterceptorHandler handler;
+
+  _PendingRequest({required this.err, required this.handler});
 }

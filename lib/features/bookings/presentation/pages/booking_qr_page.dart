@@ -1,12 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:football/core/network/media_url.dart';
+import 'package:football/core/routing/app_navigation.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/booking_model.dart';
 import '../providers/booking_providers.dart';
 
-class BookingQrPage extends ConsumerWidget {
+class BookingQrPage extends ConsumerStatefulWidget {
   final String bookingId;
 
   const BookingQrPage({
@@ -15,23 +18,64 @@ class BookingQrPage extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final bookingAsync = ref.watch(bookingByIdProvider(bookingId));
+  ConsumerState<BookingQrPage> createState() => _BookingQrPageState();
+}
+
+class _BookingQrPageState extends ConsumerState<BookingQrPage>
+    with WidgetsBindingObserver {
+  Timer? _statusPollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startStatusPolling();
+  }
+
+  @override
+  void dispose() {
+    _statusPollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshBookingStatus();
+    }
+  }
+
+  void _startStatusPolling() {
+    _statusPollTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _refreshBookingStatus(),
+    );
+  }
+
+  void _refreshBookingStatus() {
+    ref.invalidate(bookingByIdProvider(widget.bookingId));
+    ref.invalidate(bookingQrProvider(widget.bookingId));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bookingAsync = ref.watch(bookingByIdProvider(widget.bookingId));
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Booking QR'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: () => context.safePop(fallback: '/my-bookings'),
         ),
         actions: [
           IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh),
             onPressed: () {
-              ref.invalidate(bookingByIdProvider(bookingId));
-              ref.invalidate(bookingQrProvider(bookingId));
+              ref.invalidate(bookingByIdProvider(widget.bookingId));
+              ref.invalidate(bookingQrProvider(widget.bookingId));
             },
           ),
           IconButton(
@@ -51,7 +95,7 @@ class BookingQrPage extends ConsumerWidget {
             title: 'Could not load booking details',
             message: _friendlyBookingError(e),
             primaryAction: FilledButton.icon(
-              onPressed: () => ref.invalidate(bookingByIdProvider(bookingId)),
+              onPressed: () => ref.invalidate(bookingByIdProvider(widget.bookingId)),
               icon: const Icon(Icons.refresh),
               label: const Text('Retry'),
             ),
@@ -76,14 +120,14 @@ class BookingQrPage extends ConsumerWidget {
                   label: const Text('Back to My Bookings'),
                 ),
                 secondaryAction: OutlinedButton.icon(
-                  onPressed: () => ref.invalidate(bookingByIdProvider(bookingId)),
+                  onPressed: () => ref.invalidate(bookingByIdProvider(widget.bookingId)),
                   icon: const Icon(Icons.refresh),
                   label: const Text('Refresh'),
                 ),
               );
             }
 
-            final qrAsync = ref.watch(bookingQrProvider(bookingId));
+            final qrAsync = ref.watch(bookingQrProvider(widget.bookingId));
 
             return qrAsync.when(
               loading: () => Column(
@@ -105,8 +149,8 @@ class BookingQrPage extends ConsumerWidget {
                 infoCard: _BookingSummaryCard(booking: booking),
                 primaryAction: FilledButton.icon(
                   onPressed: () {
-                    ref.invalidate(bookingByIdProvider(bookingId));
-                    ref.invalidate(bookingQrProvider(bookingId));
+                    ref.invalidate(bookingByIdProvider(widget.bookingId));
+                    ref.invalidate(bookingQrProvider(widget.bookingId));
                   },
                   icon: const Icon(Icons.refresh),
                   label: const Text('Retry'),
@@ -456,7 +500,7 @@ class _BookingSummaryCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text('Booking: ${booking.bookingNumberDisplay}'),
             const SizedBox(height: 4),
-            Text('Status: ${BookingQrPage._labelForBookingStatus(booking)}'),
+            Text('Status: ${_BookingQrPageState._labelForBookingStatus(booking)}'),
           ],
         ),
       ),

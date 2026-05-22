@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:football/core/widgets/app_button.dart';
 import 'package:football/features/owner/data/owner_repository.dart';
 import 'package:football/features/owner/presentation/providers/owner_providers.dart';
-import 'package:go_router/go_router.dart';
+import 'package:football/core/routing/app_navigation.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 class OwnerQrCheckInPage extends ConsumerStatefulWidget {
@@ -35,6 +36,7 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
   MobileScannerController? _scannerController;
 
   String? _lastScannedToken;
+  OwnerCheckInResult? _lastCheckInResult;
 
   bool get _busy =>
       _verifyingBookingId || _verifyingQr || _scannerProcessing;
@@ -67,7 +69,10 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
       return;
     }
 
-    setState(() => _verifyingBookingId = true);
+    setState(() {
+      _verifyingBookingId = true;
+      _lastCheckInResult = null;
+    });
 
     try {
       final repo = ref.read(ownerRepositoryProvider);
@@ -111,7 +116,10 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
       return;
     }
 
-    setState(() => _verifyingQr = true);
+    setState(() {
+      _verifyingQr = true;
+      _lastCheckInResult = null;
+    });
 
     try {
       final repo = ref.read(ownerRepositoryProvider);
@@ -158,7 +166,10 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
     if (_lastScannedToken == token) return;
     _lastScannedToken = token;
 
-    setState(() => _scannerProcessing = true);
+    setState(() {
+      _scannerProcessing = true;
+      _lastCheckInResult = null;
+    });
 
     try {
       await _scannerController?.stop();
@@ -172,6 +183,8 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
       );
 
       if (!mounted) return;
+
+      setState(() => _lastCheckInResult = result);
 
       await _closeScannerSheetIfOpen();
 
@@ -198,10 +211,12 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
     } catch (e) {
       if (!mounted) return;
 
+      setState(() => _lastCheckInResult = null);
       await _closeScannerSheetIfOpen();
 
       if (!mounted) return;
-      _showMappedError(e);
+      final msg = _extractErrorMessage(e);
+      await _showErrorDialog(msg);
     } finally {
       if (mounted) {
         setState(() => _scannerProcessing = false);
@@ -420,7 +435,7 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
   }
 
   Future<void> _showSuccessDialog(OwnerCheckInResult result) async {
-    final data = result.data;
+    final data = _lastCheckInResult?.data ?? result.data;
 
     await showDialog<void>(
       context: context,
@@ -456,6 +471,23 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
     );
   }
 
+  Future<void> _showErrorDialog(String message) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.error_outline, color: Colors.red),
+        title: const Text('Check-in Failed'),
+        content: Text(message.isEmpty ? 'Invalid QR' : message),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pageTitle = (widget.fieldName?.trim().isNotEmpty ?? false)
@@ -468,7 +500,7 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
         actions: [
           IconButton(
             tooltip: 'Back to bookings',
-            onPressed: _busy ? null : () => context.pop(),
+            onPressed: _busy ? null : () => context.safePop(fallback: '/owner'),
             icon: const Icon(Icons.list_alt_outlined),
           ),
         ],
@@ -533,23 +565,11 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _busy ? null : _verifyBookingId,
-                      icon: _verifyingBookingId
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.verified_outlined),
-                      label: Text(
-                        _verifyingBookingId
-                            ? 'Checking...'
-                            : 'Verify by Booking ID',
-                      ),
-                    ),
+                  AppButton(
+                    text: 'Verify by Booking ID',
+                    icon: Icons.verified_outlined,
+                    enabled: !_busy,
+                    onPressed: _verifyBookingId,
                   ),
                 ],
               ),
@@ -583,21 +603,11 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.tonalIcon(
-                      onPressed: _busy ? null : _validateQrToken,
-                      icon: _verifyingQr
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.qr_code_2_outlined),
-                      label: Text(
-                        _verifyingQr ? 'Checking...' : 'Validate QR Token',
-                      ),
-                    ),
+                  AppButton(
+                    text: 'Validate QR Token',
+                    icon: Icons.qr_code_2_outlined,
+                    enabled: !_busy,
+                    onPressed: _validateQrToken,
                   ),
                 ],
               ),

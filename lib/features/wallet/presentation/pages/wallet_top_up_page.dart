@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/widgets/app_button.dart';
+
 class WalletTopUpPage extends StatefulWidget {
   const WalletTopUpPage({super.key});
 
@@ -9,7 +11,6 @@ class WalletTopUpPage extends StatefulWidget {
 
 class _WalletTopUpPageState extends State<WalletTopUpPage> {
   final _amountController = TextEditingController();
-  bool _submitting = false;
 
   @override
   void dispose() {
@@ -18,8 +19,6 @@ class _WalletTopUpPageState extends State<WalletTopUpPage> {
   }
 
   Future<void> _submit() async {
-    if (_submitting) return;
-
     final amount = double.tryParse(_amountController.text.trim());
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -28,22 +27,16 @@ class _WalletTopUpPageState extends State<WalletTopUpPage> {
       return;
     }
 
-    setState(() => _submitting = true);
+    await Future.delayed(const Duration(milliseconds: 500));
 
-    try {
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Top up request created for ${amount.toStringAsFixed(2)} EGP',
-          ),
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Top up request created for ${amount.toStringAsFixed(2)} EGP',
         ),
-      );
-    } finally {
-      if (mounted) setState(() => _submitting = false);
-    }
+      ),
+    );
   }
 
   @override
@@ -73,16 +66,10 @@ class _WalletTopUpPageState extends State<WalletTopUpPage> {
             ),
           ),
           const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: _submitting ? null : _submit,
-            icon: _submitting
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.account_balance_wallet_outlined),
-            label: Text(_submitting ? 'Processing...' : 'Continue'),
+          AppButton(
+            text: 'Continue',
+            icon: Icons.account_balance_wallet_outlined,
+            onPressed: _submit,
           ),
           const SizedBox(height: 16),
           const Text(

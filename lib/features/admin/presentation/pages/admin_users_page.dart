@@ -3,11 +3,69 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/admin_users_provider.dart';
 
-class AdminUsersPage extends ConsumerWidget {
+class AdminUsersPage extends ConsumerStatefulWidget {
   const AdminUsersPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AdminUsersPage> createState() => _AdminUsersPageState();
+}
+
+class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
+  final Set<String> _processingUserIds = <String>{};
+
+  Future<void> _toggleUserSuspension({
+    required String userId,
+    required bool suspended,
+  }) async {
+    if (_processingUserIds.contains(userId)) return;
+
+    setState(() {
+      _processingUserIds.add(userId);
+    });
+
+    final repo = ref.read(adminUsersRepositoryProvider);
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      if (suspended) {
+        await repo.unsuspendUser(userId);
+      } else {
+        await repo.suspendUser(userId);
+      }
+
+      ref.invalidate(adminUsersProvider);
+
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            suspended
+                ? 'User activated successfully'
+                : 'User suspended successfully',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _processingUserIds.remove(userId);
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final usersAsync = ref.watch(adminUsersProvider);
 
     return Scaffold(
@@ -62,6 +120,7 @@ class AdminUsersPage extends ConsumerWidget {
               itemBuilder: (context, index) {
                 final user = users[index];
                 final suspended = user.suspendedUntil != null;
+                final isProcessing = _processingUserIds.contains(user.id);
 
                 return Card(
                   margin: const EdgeInsets.symmetric(
@@ -88,42 +147,22 @@ class AdminUsersPage extends ConsumerWidget {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: suspended ? Colors.green : Colors.red,
                       ),
-                      onPressed: () async {
-                        final repo = ref.read(adminUsersRepositoryProvider);
-                        final messenger = ScaffoldMessenger.of(context);
-
-                        try {
-                          if (suspended) {
-                            await repo.unsuspendUser(user.id);
-                          } else {
-                            await repo.suspendUser(user.id);
-                          }
-
-                          ref.invalidate(adminUsersProvider);
-
-                          if (!context.mounted) return;
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                suspended
-                                    ? 'User activated successfully'
-                                    : 'User suspended successfully',
+                      onPressed: isProcessing
+                          ? null
+                          : () => _toggleUserSuspension(
+                                userId: user.id,
+                                suspended: suspended,
                               ),
-                            ),
-                          );
-                        } catch (e) {
-                          if (!context.mounted) return;
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                e.toString().replaceFirst('Exception: ', ''),
+                      child: isProcessing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
                               ),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      },
-                      child: Text(suspended ? 'Activate' : 'Suspend'),
+                            )
+                          : Text(suspended ? 'Activate' : 'Suspend'),
                     ),
                   ),
                 );

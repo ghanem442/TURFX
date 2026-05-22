@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/widgets/app_button.dart';
 import '../../data/auth_repository_provider.dart';
 import '../providers/auth_session_provider.dart';
 
@@ -137,9 +138,10 @@ class _SplashPageState extends ConsumerState<SplashPage> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
               const SizedBox(height: 18),
-              TextButton(
+              AppButton(
+                text: 'إعادة المحاولة',
+                width: 200,
                 onPressed: _startBoot,
-                child: const Text('إعادة المحاولة'),
               ),
             ],
           ),
