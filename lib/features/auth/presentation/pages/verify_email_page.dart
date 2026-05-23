@@ -39,7 +39,12 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
     return '/home';
   }
 
-  void _goToLogin() {
+  Future<void> _goToLogin() async {
+    if (!mounted) return;
+
+    final session = ref.read(authSessionProvider.notifier);
+    await session.logout();
+
     if (!mounted) return;
     context.go('/login');
   }
@@ -61,77 +66,6 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
       _showSnack(msg);
     } catch (e) {
       _showSnack('Failed to resend verification email: $e');
-    }
-  }
-
-  Future<void> _devAutoVerify() async {
-    if (_email.isEmpty) {
-      _showSnack('Email is missing');
-      return;
-    }
-
-    try {
-      final repo = ref.read(authRepositoryProvider);
-      final session = ref.read(authSessionProvider.notifier);
-
-      final res = await repo.devAutoVerify(email: _email);
-
-      final msg = (res.message ?? '').trim().isNotEmpty
-          ? res.message!.trim()
-          : 'Email verified successfully';
-
-      final me = await repo.getCurrentUser();
-
-      if (me.success == true) {
-        final data = me.data;
-        final userMap = (data['user'] is Map)
-            ? (data['user'] as Map).cast<String, dynamic>()
-            : (data['data'] is Map)
-                ? (data['data'] as Map).cast<String, dynamic>()
-                : data;
-
-        final email = (userMap['email'] ?? '').toString().trim();
-        final isVerified = userMap['isVerified'] == true;
-        final name = userMap['name']?.toString().trim();
-        final role = userMap['role']?.toString();
-        final id = userMap['id']?.toString();
-
-        if (email.isNotEmpty) {
-          session.saveUser(
-            email: email,
-            isVerified: isVerified,
-            name: (name != null && name.isNotEmpty) ? name : null,
-            role: role,
-            id: id,
-          );
-        }
-
-        _showSnack(msg);
-
-        if (!mounted) return;
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        if (!mounted) return;
-
-        if (isVerified) {
-          context.go(_homeRouteForRole(role));
-          return;
-        }
-      } else {
-        session.markVerified();
-        _showSnack(msg);
-
-        if (!mounted) return;
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        if (!mounted) return;
-        context.go('/home');
-        return;
-      }
-
-      _showSnack(
-        'Verification completed, but account status is still not verified.',
-      );
-    } catch (e) {
-      _showSnack('Auto verify failed: $e');
     }
   }
 
@@ -254,14 +188,6 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
                     child: const Text('Back to Login'),
                   ),
                 ),
-                if (kDebugMode) ...[
-                  const SizedBox(height: 10),
-                  AppButton(
-                    text: 'DEV: Auto verify this email',
-                    outlined: true,
-                    onPressed: _devAutoVerify,
-                  ),
-                ],
                 const SizedBox(height: 12),
                 Text(
                   'Note: If an unverified account exists, a link will be sent.',

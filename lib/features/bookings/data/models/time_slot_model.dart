@@ -66,7 +66,7 @@ class TimeSlotModel {
     if (value == null) return null;
     final text = value.toString().trim();
     if (text.isEmpty) return null;
-    return DateTime.tryParse(text)?.toLocal();
+    return DateTime.tryParse(text);
   }
 
   static DateTime? _parseDateTimeOrTime(dynamic value, DateTime baseDate) {
@@ -77,7 +77,7 @@ class TimeSlotModel {
 
     final fullDateTime = DateTime.tryParse(text);
     if (fullDateTime != null) {
-      return fullDateTime.toLocal();
+      return fullDateTime;
     }
 
     final normalized = text.replaceAll('.', ':');
@@ -95,13 +95,13 @@ class TimeSlotModel {
       hour,
       minute,
       second,
-    ).toLocal();
+    );
   }
 
   factory TimeSlotModel.fromJson(Map<String, dynamic> json) {
     final parsedDate = _parseDate(json['date']);
     final fallbackBaseDate =
-        parsedDate ?? DateTime.now().toLocal();
+        parsedDate ?? DateTime.now();
 
     final parsedStartTime =
         _parseDateTimeOrTime(json['startTime'], fallbackBaseDate);
@@ -112,7 +112,7 @@ class TimeSlotModel {
     final baseDate = parsedDate ??
         parsedStartTime ??
         parsedEndTime ??
-        DateTime.fromMillisecondsSinceEpoch(0).toLocal();
+        DateTime.fromMillisecondsSinceEpoch(0);
 
     final normalizedDate = DateTime(
       baseDate.year,
@@ -152,10 +152,10 @@ class TimeSlotModel {
       status: (json['status'] ?? '').toString(),
       createdAt: json['createdAt'] == null
           ? null
-          : DateTime.tryParse(json['createdAt'].toString())?.toLocal(),
+          : DateTime.tryParse(json['createdAt'].toString()),
       updatedAt: json['updatedAt'] == null
           ? null
-          : DateTime.tryParse(json['updatedAt'].toString())?.toLocal(),
+          : DateTime.tryParse(json['updatedAt'].toString()),
       field: json['field'] is Map<String, dynamic>
           ? TimeSlotFieldInfo.fromJson(json['field'] as Map<String, dynamic>)
           : (json['field'] is Map

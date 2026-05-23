@@ -728,13 +728,12 @@ String _money(double value) {
 }
 
 String _formatDateTime(DateTime d) {
-  final x = d.toLocal();
-  final dd = x.day.toString().padLeft(2, '0');
-  final mm = x.month.toString().padLeft(2, '0');
-  final yyyy = x.year.toString();
+  final dd = d.day.toString().padLeft(2, '0');
+  final mm = d.month.toString().padLeft(2, '0');
+  final yyyy = d.year.toString();
 
-  int h = x.hour;
-  final m = x.minute.toString().padLeft(2, '0');
+  int h = d.hour;
+  final m = d.minute.toString().padLeft(2, '0');
   final ampm = h >= 12 ? 'PM' : 'AM';
   h = h % 12;
   if (h == 0) h = 12;

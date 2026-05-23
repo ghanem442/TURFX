@@ -130,14 +130,6 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
 
       if (!mounted) return;
 
-      if (_isAlreadyCheckedIn(result)) {
-        _showSnack(
-          'QR already used / booking already checked-in ❌',
-          isError: true,
-        );
-        return;
-      }
-
       _showSnack(
         result.message.trim().isNotEmpty
             ? result.message
@@ -189,14 +181,6 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
       await _closeScannerSheetIfOpen();
 
       if (!mounted) return;
-
-      if (_isAlreadyCheckedIn(result)) {
-        _showSnack(
-          'QR already used / booking already checked-in ❌',
-          isError: true,
-        );
-        return;
-      }
 
       _showSnack(
         result.message.trim().isNotEmpty
@@ -619,10 +603,9 @@ class _OwnerQrCheckInPageState extends ConsumerState<OwnerQrCheckInPage> {
   }
 
   String _formatTime(DateTime value) {
-    final local = value.toLocal();
-    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
-    final minute = local.minute.toString().padLeft(2, '0');
-    final suffix = local.hour >= 12 ? 'PM' : 'AM';
+    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final minute = value.minute.toString().padLeft(2, '0');
+    final suffix = value.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $suffix';
   }
 }

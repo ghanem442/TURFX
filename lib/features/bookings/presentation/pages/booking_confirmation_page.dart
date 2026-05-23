@@ -1085,7 +1085,7 @@ class _BookingConfirmationPageState
                             ? AppColors.green
                             : statusUpper == 'PAYMENT_FAILED'
                                 ? Colors.red
-                                : AppColors.orange,
+                                : Colors.grey,
                       ),
                     ),
                   ),
@@ -2172,6 +2172,12 @@ class _AccountDetailsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardColor = isDark ? theme.cardColor : Colors.grey.shade50;
+    final borderColor = isDark ? theme.dividerColor : Colors.grey.shade300;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     final entries = accountDetails.entries
         .where(
             (e) => e.value != null && e.value.toString().trim().isNotEmpty)
@@ -2183,22 +2189,29 @@ class _AccountDetailsCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Account Details (${gateway.toUpperCase()})',
-              style: const TextStyle(fontWeight: FontWeight.w900)),
+          Text(
+            'Account Details (${gateway.toUpperCase()})',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              color: textColor,
+            ),
+          ),
           const SizedBox(height: 12),
           ...entries.map(
             (entry) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _RowItem(
-                  label: _beautifyKey(entry.key),
-                  value: entry.value.toString()),
+                label: _beautifyKey(entry.key),
+                value: entry.value.toString(),
+                color: textColor,
+              ),
             ),
           ),
         ],
@@ -2294,24 +2307,34 @@ class _CountdownPill extends StatelessWidget {
 class _RowItem extends StatelessWidget {
   final String label;
   final String value;
+  final Color? color;
 
-  const _RowItem({required this.label, required this.value});
+  const _RowItem({required this.label, required this.value, this.color});
 
   @override
   Widget build(BuildContext context) {
+    final textColor = color ?? AppColors.subText;
+
     return Row(
       children: [
         Expanded(
-          child: Text(label,
-              style: const TextStyle(
-                  color: AppColors.subText, fontWeight: FontWeight.w700)),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: textColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
         const SizedBox(width: 10),
         Flexible(
           child: Text(
             value.trim().isEmpty ? '—' : value,
             textAlign: TextAlign.end,
-            style: const TextStyle(fontWeight: FontWeight.w900),
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              color: textColor,
+            ),
           ),
         ),
       ],
@@ -2324,14 +2347,12 @@ class _RowItem extends StatelessWidget {
 // ════════════════════════════════════════════════════════════════════════════
 
 String _formatDate(DateTime d) {
-  final x = d.toLocal();
-  return '${x.day.toString().padLeft(2, '0')}/${x.month.toString().padLeft(2, '0')}/${x.year}';
+  return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 }
 
 String _formatTime(DateTime d) {
-  final x = d.toLocal();
-  int h = x.hour;
-  final m = x.minute.toString().padLeft(2, '0');
+  int h = d.hour;
+  final m = d.minute.toString().padLeft(2, '0');
   final ampm = h >= 12 ? 'PM' : 'AM';
   h = h % 12;
   if (h == 0) h = 12;

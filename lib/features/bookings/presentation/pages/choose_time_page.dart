@@ -294,7 +294,7 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
                     crossAxisCount: 2,
                     mainAxisSpacing: 10,
                     crossAxisSpacing: 10,
-                    childAspectRatio: 1.65,
+                    childAspectRatio: 1.15,
                   ),
                   itemBuilder: (context, i) {
                     final TimeSlotModel s = sorted[i];
@@ -430,9 +430,8 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
   }
 
   String _formatTime(DateTime d) {
-    final x = d.toLocal();
-    int h = x.hour;
-    final m = x.minute.toString().padLeft(2, '0');
+    int h = d.hour;
+    final m = d.minute.toString().padLeft(2, '0');
     final ampm = h >= 12 ? 'PM' : 'AM';
     h = h % 12;
     if (h == 0) h = 12;

@@ -28,9 +28,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        // Release signing config for Google Play
+        create("release") {
+            storeFile = file(System.getenv("KEYSTORE_PATH") ?: "key.jks")
+            storePassword = System.getenv("KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("KEY_ALIAS")
+            keyPassword = System.getenv("KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }

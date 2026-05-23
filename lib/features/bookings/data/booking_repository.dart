@@ -825,9 +825,8 @@ class BookingsRepository {
   }
 
   String _isoDate(DateTime d) {
-    final x = d.toLocal();
-    final mm = x.month.toString().padLeft(2, '0');
-    final dd = x.day.toString().padLeft(2, '0');
-    return '${x.year}-$mm-$dd';
+    final mm = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+    return '${d.year}-$mm-$dd';
   }
 }

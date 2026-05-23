@@ -106,46 +106,45 @@ class BookingModel {
   }
 
   static DateTime _epochLocal() {
-    return DateTime.fromMillisecondsSinceEpoch(0).toLocal();
+    return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
   static DateTime _asDateTime(dynamic v) {
     if (v == null) return _epochLocal();
-    if (v is DateTime) return v.toLocal();
+    if (v is DateTime) return v;
 
     final parsed = DateTime.tryParse(v.toString());
-    if (parsed != null) return parsed.toLocal();
+    if (parsed != null) return parsed;
 
     return _epochLocal();
   }
 
   static DateTime? _asNullableDateTime(dynamic v) {
     if (v == null) return null;
-    if (v is DateTime) return v.toLocal();
+    if (v is DateTime) return v;
 
     final parsed = DateTime.tryParse(v.toString());
-    return parsed?.toLocal();
+    return parsed;
   }
 
   static DateTime _combineDateAndTime(dynamic dateValue, dynamic timeValue) {
     final date = _asDateTime(dateValue);
 
     if (timeValue == null) return date;
-    if (timeValue is DateTime) return timeValue.toLocal();
+    if (timeValue is DateTime) return timeValue;
 
     final raw = timeValue.toString().trim();
     if (raw.isEmpty) return date;
 
     final parsedFullDateTime = DateTime.tryParse(raw);
     if (parsedFullDateTime != null) {
-      final local = parsedFullDateTime.toLocal();
       return DateTime(
         date.year,
         date.month,
         date.day,
-        local.hour,
-        local.minute,
-        local.second,
+        parsedFullDateTime.hour,
+        parsedFullDateTime.minute,
+        parsedFullDateTime.second,
       );
     }
 
@@ -165,7 +164,7 @@ class BookingModel {
       hour,
       minute,
       second,
-    ).toLocal();
+    );
   }
 
   double get totalAsDouble => _asDouble(totalPrice);
@@ -396,7 +395,7 @@ class QrCodeModel {
       isUsed: (json['isUsed'] ?? false) == true,
       usedAt: json['usedAt'] == null
           ? null
-          : DateTime.tryParse(json['usedAt'].toString())?.toLocal(),
+          : DateTime.tryParse(json['usedAt'].toString()),
     );
   }
 }

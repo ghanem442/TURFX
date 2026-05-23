@@ -253,9 +253,9 @@ double _asDouble(dynamic v) {
 DateTime _parseDate(dynamic raw) {
   final parsed = DateTime.tryParse((raw ?? '').toString());
   if (parsed == null) {
-    return DateTime.fromMillisecondsSinceEpoch(0).toLocal();
+    return DateTime.fromMillisecondsSinceEpoch(0);
   }
-  return parsed.toLocal();
+  return parsed;
 }
 
 String _extractMessage(Map<String, dynamic> root) {

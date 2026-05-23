@@ -929,23 +929,18 @@ String _paymentStatusLabel(String raw) {
 }
 
 String _formatSchedule(DateTime date, DateTime start, DateTime end) {
-  final localDate = date.toLocal();
-  final localStart = start.toLocal();
-  final localEnd = end.toLocal();
+  final dd = date.day.toString().padLeft(2, '0');
+  final mm = date.month.toString().padLeft(2, '0');
+  final yyyy = date.year.toString();
 
-  final dd = localDate.day.toString().padLeft(2, '0');
-  final mm = localDate.month.toString().padLeft(2, '0');
-  final yyyy = localDate.year.toString();
-
-  return '$dd/$mm/$yyyy • ${_formatTime(localStart)} - ${_formatTime(localEnd)}';
+  return '$dd/$mm/$yyyy • ${_formatTime(start)} - ${_formatTime(end)}';
 }
 
 String _formatDateTime(DateTime value) {
-  final local = value.toLocal();
-  final dd = local.day.toString().padLeft(2, '0');
-  final mm = local.month.toString().padLeft(2, '0');
-  final yyyy = local.year.toString();
-  return '$dd/$mm/$yyyy ${_formatTime(local)}';
+  final dd = value.day.toString().padLeft(2, '0');
+  final mm = value.month.toString().padLeft(2, '0');
+  final yyyy = value.year.toString();
+  return '$dd/$mm/$yyyy ${_formatTime(value)}';
 }
 
 String _formatTime(DateTime value) {
