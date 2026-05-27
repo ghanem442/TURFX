@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:football/core/network/providers.dart';
+import 'package:football/features/auth/presentation/providers/auth_session_provider.dart';
 import 'package:football/features/bookings/data/models/booking_model.dart';
 import 'package:football/features/owner/data/models/owner_fields_response_model.dart';
 import 'package:football/features/owner/data/owner_repository.dart';
@@ -12,11 +13,27 @@ final ownerRepositoryProvider = Provider<OwnerRepository>((ref) {
 final ownerMyFieldsProvider =
     FutureProvider<OwnerFieldsResponseModel>((ref) async {
   final repo = ref.watch(ownerRepositoryProvider);
+  final user = ref.watch(authUserProvider);
+  final currentUserId = user?.id?.trim() ?? '';
 
-  return repo.getMyFields(
+  final response = await repo.getMyFields(
     page: 1,
     limit: 20,
   );
+
+  // Filter client-side: only show fields belonging to the current owner
+  if (currentUserId.isNotEmpty) {
+    final filtered = response.data
+        .where((field) => field.ownerId == currentUserId)
+        .toList();
+    return OwnerFieldsResponseModel(
+      success: response.success,
+      data: filtered,
+      meta: response.meta,
+    );
+  }
+
+  return response;
 });
 
 final ownerBookingsProvider =

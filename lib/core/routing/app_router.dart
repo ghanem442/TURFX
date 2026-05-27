@@ -49,8 +49,8 @@ final goRouterProvider = Provider<GoRouter>((ref) {
 
   final router = GoRouter(
     navigatorKey: rootNavigatorKey,
-      initialLocation: '/splash',
-      refreshListenable: refreshListenable,
+initialLocation: '/splash',
+        refreshListenable: refreshListenable,
       errorBuilder: (context, state) => Scaffold(
         appBar: AppBar(title: const Text('FootballBook')),
         body: Center(
@@ -179,7 +179,6 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           path: '/splash',
           pageBuilder: (context, state) => buildAppPage(
             key: state.pageKey,
-            style: AppTransitionStyle.fade,
             child: const SplashPage(),
           ),
         ),

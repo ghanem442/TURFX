@@ -391,6 +391,115 @@ class _ChooseTimePageState extends ConsumerState<ChooseTimePage> {
     final slotId = _selectedTimeSlotId;
     if (slotId == null || _creating) return;
 
+    final bool proceed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          icon: const Icon(
+            Icons.warning_amber_rounded,
+            color: AppColors.orange,
+            size: 48,
+          ),
+          title: const Text(
+            'تنبيه',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 22,
+            ),
+          ),
+          content: Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: RichText(
+              textAlign: TextAlign.center,
+              text: TextSpan(
+                style: TextStyle(
+                  fontSize: 15,
+                  height: 1.6,
+                  color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.white,
+                  fontFamily: Theme.of(context).textTheme.bodyLarge?.fontFamily,
+                ),
+                children: const [
+                  TextSpan(text: 'في حالة إلغاء الحجز قبل موعد المباراة بـ '),
+                  TextSpan(
+                    text: '24 ساعة أو أقل',
+                    style: TextStyle(
+                      color: AppColors.orange,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  TextSpan(text: '، '),
+                  TextSpan(
+                    text: 'لن يتم استرداد المبلغ المدفوع',
+                    style: TextStyle(
+                      color: Colors.redAccent,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  TextSpan(text: '.'),
+                ],
+              ),
+            ),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(
+                        color: Theme.of(context).dividerColor.withAlpha(120),
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(context, false),
+                    child: Text(
+                      'إلغاء',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text(
+                      'متابعة الحجز',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ) ?? false;
+
+    if (!proceed) return;
+
     setState(() => _creating = true);
 
     try {
