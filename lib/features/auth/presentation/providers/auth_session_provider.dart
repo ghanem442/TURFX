@@ -63,7 +63,7 @@ final authUserRoleProvider = Provider<String?>((ref) {
 });
 
 class AuthSession extends Notifier<AuthStatus> {
-  static const _bootTimeout = Duration(seconds: 2);
+  static const _bootTimeout = Duration(seconds: 10);
 
   @override
   AuthStatus build() => AuthStatus.unknown;
@@ -72,34 +72,67 @@ class AuthSession extends Notifier<AuthStatus> {
     final storage = ref.read(secureStorageProvider);
 
     try {
-      final accessFuture = storage.getAccessToken();
-      final refreshFuture = storage.getRefreshToken();
-      final userDataFuture = storage.getUserData();
-
-      final access = await accessFuture.timeout(_bootTimeout);
-      final refresh = await refreshFuture.timeout(_bootTimeout);
-      final userDataRaw = await userDataFuture.timeout(_bootTimeout);
+      // Read tokens from secure storage with generous timeout
+      final access = await storage.getAccessToken().timeout(
+        _bootTimeout,
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('Auth boot: getAccessToken timed out');
+          }
+          return null;
+        },
+      );
+      
+      final refresh = await storage.getRefreshToken().timeout(
+        _bootTimeout,
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('Auth boot: getRefreshToken timed out');
+          }
+          return null;
+        },
+      );
+      
+      final userDataRaw = await storage.getUserData().timeout(
+        _bootTimeout,
+        onTimeout: () {
+          if (kDebugMode) {
+            debugPrint('Auth boot: getUserData timed out');
+          }
+          return null;
+        },
+      );
 
       final accessOk = access != null && access.trim().isNotEmpty;
       final refreshOk = refresh != null && refresh.trim().isNotEmpty;
 
+      // Update in-memory token providers
       ref.read(accessTokenProvider.notifier).state = accessOk ? access : null;
       ref.read(refreshTokenProvider.notifier).state = refreshOk ? refresh : null;
 
+      // If we have at least an access token, consider user authenticated
       if (accessOk) {
         state = AuthStatus.authenticated;
         _restoreUser(userDataRaw);
+        
+        if (kDebugMode) {
+          debugPrint(
+            'Auth boot SUCCESS: Tokens restored from storage. '
+            'access=${access?.substring(0, 20)}... refresh=${refreshOk ? "YES" : "NO"}',
+          );
+        }
       } else {
+        // No valid tokens found - user needs to log in
         state = AuthStatus.unauthenticated;
         ref.read(authUserProvider.notifier).state = null;
+        
+        if (kDebugMode) {
+          debugPrint('Auth boot: No valid tokens found -> unauthenticated');
+        }
       }
-
-      if (kDebugMode) {
-        debugPrint(
-          'Auth boot done. access=${accessOk ? "YES" : "NO"} refresh=${refreshOk ? "YES" : "NO"} status=$state',
-        );
-      }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      // Storage read failed - treat as unauthenticated but don't clear storage
+      // (in case it's a temporary issue)
       ref.read(accessTokenProvider.notifier).state = null;
       ref.read(refreshTokenProvider.notifier).state = null;
       ref.read(authUserProvider.notifier).state = null;
@@ -107,9 +140,9 @@ class AuthSession extends Notifier<AuthStatus> {
       state = AuthStatus.unauthenticated;
 
       if (kDebugMode) {
-        debugPrint('Auth boot failed -> unauthenticated. Error: $e');
+        debugPrint('Auth boot FAILED -> unauthenticated. Error: $e');
+        debugPrint('Stack trace: $stackTrace');
       }
-      ref.read(routerRefreshProvider).refresh();
     }
   }
 
@@ -119,13 +152,19 @@ class AuthSession extends Notifier<AuthStatus> {
   }) async {
     final storage = ref.read(secureStorageProvider);
 
+    // Save to secure storage first
     await storage.saveTokens(
       accessToken: accessToken,
       refreshToken: refreshToken,
     );
 
+    // Then update in-memory state
     ref.read(accessTokenProvider.notifier).state = accessToken;
     ref.read(refreshTokenProvider.notifier).state = refreshToken;
+    
+    if (kDebugMode) {
+      debugPrint('Tokens saved to secure storage. Access token: ${accessToken.substring(0, 20)}...');
+    }
   }
 
   void saveUser({
@@ -202,19 +241,36 @@ class AuthSession extends Notifier<AuthStatus> {
   }
 
   Future<void> logout() async {
+    if (kDebugMode) {
+      debugPrint('Logout initiated - clearing all auth data');
+    }
+    
     final storage = ref.read(secureStorageProvider);
 
+    // Clear secure storage
     await storage.clearAll();
 
+    // Clear in-memory state
     ref.read(accessTokenProvider.notifier).state = null;
     ref.read(refreshTokenProvider.notifier).state = null;
     ref.read(authUserProvider.notifier).state = null;
 
+    // Mark as unauthenticated
     state = AuthStatus.unauthenticated;
+    
+    // Trigger router refresh to redirect to login
     ref.read(routerRefreshProvider).refresh();
+    
+    if (kDebugMode) {
+      debugPrint('Logout complete - redirecting to login');
+    }
   }
 
   void markAuthenticated() {
+    if (kDebugMode) {
+      debugPrint('Marking user as authenticated');
+    }
+    
     state = AuthStatus.authenticated;
     ref.read(routerRefreshProvider).refresh();
   }

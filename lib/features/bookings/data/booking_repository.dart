@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:football/core/network/api_client.dart';
 import 'package:football/core/network/cloudinary_upload_service.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:football/core/utils/error_utils.dart';
 import 'package:football/core/errors/api_exception.dart';
 
@@ -278,82 +277,9 @@ class BookingsRepository {
       debugPrint('[MANUAL_PAYMENT_INFO] Gateway Key: $gatewayKey');
     }
 
-    // Try to load from Firestore first (admin settings) - Skip on Web for now
-    if (!kIsWeb) {
-      try {
-        final firestore = FirebaseFirestore.instance;
-        
-        if (kDebugMode) {
-          debugPrint('[MANUAL_PAYMENT_INFO] Attempting Firestore read...');
-        }
-        
-        final doc = await firestore
-            .collection('payment_accounts')
-            .doc(gatewayKey)
-            .get();
-        
-        if (kDebugMode) {
-          debugPrint('[MANUAL_PAYMENT_INFO] Doc exists: ${doc.exists}');
-        }
-        
-        if (doc.exists) {
-          final accountData = doc.data();
-          
-          if (kDebugMode) {
-            debugPrint('[MANUAL_PAYMENT_INFO] Account data: $accountData');
-          }
-          
-          if (accountData != null) {
-            final isEnabled = accountData['isEnabled'] == true;
-            final mobileNumber = (accountData['mobileNumber'] ?? '').toString().trim();
-            final accountName = (accountData['accountName'] ?? '').toString().trim();
-            
-            if (kDebugMode) {
-              debugPrint('[MANUAL_PAYMENT_INFO] isEnabled: $isEnabled');
-              debugPrint('[MANUAL_PAYMENT_INFO] mobileNumber: $mobileNumber');
-              debugPrint('[MANUAL_PAYMENT_INFO] accountName: $accountName');
-            }
-            
-            if (isEnabled && mobileNumber.isNotEmpty) {
-              if (kDebugMode) {
-                debugPrint('[MANUAL_PAYMENT_INFO] ✅ Returning Firestore data');
-              }
-              
-              // Return Firestore admin settings
-              return ManualPaymentInfoModel(
-                gateway: resolvedGateway,
-                isAvailable: true,
-                instructions: {
-                  'ar': (accountData['instructionsAr'] ?? 'قم بتحويل المبلغ المطلوب').toString(),
-                  'en': (accountData['instructionsEn'] ?? 'Transfer the required amount').toString(),
-                },
-                accountDetails: {
-                  'mobileNumber': mobileNumber,
-                  'accountName': accountName,
-                },
-              );
-            } else {
-              if (kDebugMode) {
-                debugPrint('[MANUAL_PAYMENT_INFO] ⚠️ Account disabled or no mobile number');
-              }
-            }
-          }
-        }
-        
-        if (kDebugMode) {
-          debugPrint('[MANUAL_PAYMENT_INFO] No valid Firestore data, trying API');
-        }
-      } catch (e, stackTrace) {
-        if (kDebugMode) {
-          debugPrint('[MANUAL_PAYMENT_INFO] ❌ Firestore error: $e');
-          debugPrint('[MANUAL_PAYMENT_INFO] Stack trace: $stackTrace');
-        }
-        // Continue to API call
-      }
-    } else {
-      if (kDebugMode) {
-        debugPrint('[MANUAL_PAYMENT_INFO] Skipping Firestore on Web, using API');
-      }
+    // Firebase removed - using API only
+    if (kDebugMode) {
+      debugPrint('[MANUAL_PAYMENT_INFO] Using API (Firebase removed)');
     }
 
     if (kDebugMode) {

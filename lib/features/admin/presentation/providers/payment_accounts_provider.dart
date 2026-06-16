@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../data/models/payment_account_model.dart';
@@ -50,69 +49,35 @@ class PaymentAccountsNotifier extends StateNotifier<PaymentAccountsState> {
     _loadAccounts();
   }
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  static const String _collection = 'payment_accounts';
-
   Future<void> _loadAccounts() async {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
       if (kDebugMode) {
-        debugPrint('[PAYMENT_ACCOUNTS] Loading from Firestore...');
+        debugPrint('[PAYMENT_ACCOUNTS] Loading default accounts (Firebase removed)...');
       }
 
-      final snapshot = await _firestore.collection(_collection).get();
-      
-      if (kDebugMode) {
-        debugPrint('[PAYMENT_ACCOUNTS] Found ${snapshot.docs.length} documents');
-      }
-      
-      if (snapshot.docs.isEmpty) {
-        // Create default accounts if none exist
-        final defaultAccounts = {
-          'VODAFONE_CASH': const PaymentAccountModel(
-            gateway: 'VODAFONE_CASH',
-            isEnabled: true,
-            mobileNumber: '',
-            accountName: '',
-            instructionsAr: 'حول المبلغ المطلوب على رقم فودافون كاش الموضح أدناه',
-            instructionsEn: 'Transfer the required amount to the Vodafone Cash number below',
-          ),
-          'INSTAPAY': const PaymentAccountModel(
-            gateway: 'INSTAPAY',
-            isEnabled: true,
-            mobileNumber: '',
-            accountName: '',
-            instructionsAr: 'حول المبلغ المطلوب على رقم إنستا باي الموضح أدناه',
-            instructionsEn: 'Transfer the required amount to the InstaPay number below',
-          ),
-        };
+      // Return default accounts (Firebase removed)
+      final defaultAccounts = {
+        'VODAFONE_CASH': const PaymentAccountModel(
+          gateway: 'VODAFONE_CASH',
+          isEnabled: true,
+          mobileNumber: '',
+          accountName: '',
+          instructionsAr: 'حول المبلغ المطلوب على رقم فودافون كاش الموضح أدناه',
+          instructionsEn: 'Transfer the required amount to the Vodafone Cash number below',
+        ),
+        'INSTAPAY': const PaymentAccountModel(
+          gateway: 'INSTAPAY',
+          isEnabled: true,
+          mobileNumber: '',
+          accountName: '',
+          instructionsAr: 'حول المبلغ المطلوب على رقم إنستا باي الموضح أدناه',
+          instructionsEn: 'Transfer the required amount to the InstaPay number below',
+        ),
+      };
 
-        if (kDebugMode) {
-          debugPrint('[PAYMENT_ACCOUNTS] Creating default accounts...');
-        }
-
-        // Save defaults to Firestore
-        for (var entry in defaultAccounts.entries) {
-          await _firestore
-              .collection(_collection)
-              .doc(entry.key)
-              .set(entry.value.toJson());
-        }
-
-        state = state.copyWith(accounts: defaultAccounts, isLoading: false);
-      } else {
-        final Map<String, PaymentAccountModel> accounts = {};
-        
-        for (var doc in snapshot.docs) {
-          if (kDebugMode) {
-            debugPrint('[PAYMENT_ACCOUNTS] Loading doc: ${doc.id}');
-          }
-          accounts[doc.id] = PaymentAccountModel.fromJson(doc.data());
-        }
-
-        state = state.copyWith(accounts: accounts, isLoading: false);
-      }
+      state = state.copyWith(accounts: defaultAccounts, isLoading: false);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[PAYMENT_ACCOUNTS] Error: $e');
@@ -130,21 +95,17 @@ class PaymentAccountsNotifier extends StateNotifier<PaymentAccountsState> {
 
     try {
       if (kDebugMode) {
-        debugPrint('[PAYMENT_ACCOUNTS] Saving ${account.gateway}...');
+        debugPrint('[PAYMENT_ACCOUNTS] Saving ${account.gateway} locally (Firebase removed)...');
       }
 
-      await _firestore
-          .collection(_collection)
-          .doc(account.gateway)
-          .set(account.toJson());
-
+      // Save to local state only (Firebase removed)
       final updatedAccounts = Map<String, PaymentAccountModel>.from(state.accounts);
       updatedAccounts[account.gateway] = account;
 
       state = state.copyWith(accounts: updatedAccounts, isSaving: false);
       
       if (kDebugMode) {
-        debugPrint('[PAYMENT_ACCOUNTS] Saved successfully');
+        debugPrint('[PAYMENT_ACCOUNTS] Saved successfully (local only)');
       }
     } catch (e) {
       if (kDebugMode) {

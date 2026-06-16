@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,7 +16,6 @@ class NotificationsService {
 
   final Ref ref;
 
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
@@ -34,21 +32,9 @@ class NotificationsService {
   Future<void> initialize() async {
     if (_initialized) return;
 
-    await _requestPermissions();
     await _initLocalNotifications();
-    await _setupForegroundPresentation();
-    await _setupHandlers();
 
     _initialized = true;
-  }
-
-  Future<void> _requestPermissions() async {
-    await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-      provisional: false,
-    );
   }
 
   Future<void> _initLocalNotifications() async {
@@ -85,45 +71,6 @@ class NotificationsService {
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_channel);
-  }
-
-  Future<void> _setupForegroundPresentation() async {
-    await _messaging.setForegroundNotificationPresentationOptions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-  }
-
-  Future<void> _setupHandlers() async {
-    FirebaseMessaging.onMessage.listen((message) async {
-      await _handleForegroundMessage(message);
-    });
-
-    FirebaseMessaging.onMessageOpenedApp.listen((message) async {
-      final payload = AppNotificationPayload.fromMap(message.data);
-      await _handleNotificationTap(payload);
-    });
-
-    final initialMessage = await _messaging.getInitialMessage();
-    if (initialMessage != null) {
-      final payload = AppNotificationPayload.fromMap(initialMessage.data);
-      await _handleNotificationTap(payload);
-    }
-  }
-
-  Future<void> _handleForegroundMessage(RemoteMessage message) async {
-    final payload = AppNotificationPayload.fromMap(message.data);
-
-    await _refreshFromPayload(payload);
-
-    await _showLocalNotification(
-      title: message.notification?.title ?? _defaultTitle(payload),
-      body: message.notification?.body ?? _defaultBody(payload),
-      payload: payload,
-    );
-
-    _showInAppSnack(payload);
   }
 
   Future<void> _handleNotificationTap(AppNotificationPayload payload) async {

@@ -1,0 +1,5 @@
+package ahmed.turfx.com
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
