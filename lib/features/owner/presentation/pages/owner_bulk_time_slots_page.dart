@@ -321,6 +321,7 @@ class _OwnerBulkTimeSlotsPageState
         );
         
         // Return success with the date so the list refreshes
+        if (!mounted) return;
         context.pop({'success': true, 'date': _startDate});
         return;
       }

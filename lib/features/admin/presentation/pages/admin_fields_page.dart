@@ -62,6 +62,7 @@ class _AdminFieldsPageState extends ConsumerState<AdminFieldsPage> {
         false;
 
     if (!confirmed) return;
+    if (!mounted) return;
 
     final repo = ref.read(adminFieldsRepositoryProvider);
     final notifier = ref.read(adminFieldsProvider.notifier);
@@ -125,6 +126,7 @@ class _AdminFieldsPageState extends ConsumerState<AdminFieldsPage> {
     debugPrint('SELECTED STATUS => $selected');
 
     if (selected == null || selected.trim().isEmpty) return;
+    if (!mounted) return;
 
     final repo = ref.read(adminFieldsRepositoryProvider);
     final notifier = ref.read(adminFieldsProvider.notifier);

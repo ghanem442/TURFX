@@ -63,85 +63,105 @@ final authUserRoleProvider = Provider<String?>((ref) {
 });
 
 class AuthSession extends Notifier<AuthStatus> {
-  static const _bootTimeout = Duration(seconds: 10);
+  static const _bootTimeout = Duration(seconds: 15);
+  static const _retryDelay = Duration(seconds: 2);
+  static const _maxRetries = 2;
 
   @override
   AuthStatus build() => AuthStatus.unknown;
 
   Future<void> boot() async {
     final storage = ref.read(secureStorageProvider);
+    int attempt = 0;
 
-    try {
-      // Read tokens from secure storage with generous timeout
-      final access = await storage.getAccessToken().timeout(
-        _bootTimeout,
-        onTimeout: () {
+    while (attempt <= _maxRetries) {
+      try {
+        // Read tokens from secure storage with generous timeout
+        final access = await storage.getAccessToken().timeout(
+          _bootTimeout,
+          onTimeout: () {
+            if (kDebugMode) {
+              debugPrint('Auth boot: getAccessToken timed out (attempt ${attempt + 1})');
+            }
+            return null;
+          },
+        );
+
+        final refresh = await storage.getRefreshToken().timeout(
+          _bootTimeout,
+          onTimeout: () {
+            if (kDebugMode) {
+              debugPrint('Auth boot: getRefreshToken timed out (attempt ${attempt + 1})');
+            }
+            return null;
+          },
+        );
+
+        final userDataRaw = await storage.getUserData().timeout(
+          _bootTimeout,
+          onTimeout: () {
+            if (kDebugMode) {
+              debugPrint('Auth boot: getUserData timed out (attempt ${attempt + 1})');
+            }
+            return null;
+          },
+        );
+
+        final accessOk = access != null && access.trim().isNotEmpty;
+        final refreshOk = refresh != null && refresh.trim().isNotEmpty;
+
+        // Update in-memory token providers
+        ref.read(accessTokenProvider.notifier).state = accessOk ? access : null;
+        ref.read(refreshTokenProvider.notifier).state = refreshOk ? refresh : null;
+
+        // If we have at least an access token, consider user authenticated
+        if (accessOk) {
+          state = AuthStatus.authenticated;
+          _restoreUser(userDataRaw);
+
           if (kDebugMode) {
-            debugPrint('Auth boot: getAccessToken timed out');
+            debugPrint(
+              'Auth boot SUCCESS (attempt ${attempt + 1}): Tokens restored from storage. '
+              'access=${access.substring(0, 20)}... refresh=${refreshOk ? "YES" : "NO"}',
+            );
           }
-          return null;
-        },
-      );
-      
-      final refresh = await storage.getRefreshToken().timeout(
-        _bootTimeout,
-        onTimeout: () {
+        } else {
+          // No valid tokens found - user needs to log in
+          state = AuthStatus.unauthenticated;
+          ref.read(authUserProvider.notifier).state = null;
+
           if (kDebugMode) {
-            debugPrint('Auth boot: getRefreshToken timed out');
+            debugPrint('Auth boot: No valid tokens found -> unauthenticated');
           }
-          return null;
-        },
-      );
-      
-      final userDataRaw = await storage.getUserData().timeout(
-        _bootTimeout,
-        onTimeout: () {
-          if (kDebugMode) {
-            debugPrint('Auth boot: getUserData timed out');
-          }
-          return null;
-        },
-      );
-
-      final accessOk = access != null && access.trim().isNotEmpty;
-      final refreshOk = refresh != null && refresh.trim().isNotEmpty;
-
-      // Update in-memory token providers
-      ref.read(accessTokenProvider.notifier).state = accessOk ? access : null;
-      ref.read(refreshTokenProvider.notifier).state = refreshOk ? refresh : null;
-
-      // If we have at least an access token, consider user authenticated
-      if (accessOk) {
-        state = AuthStatus.authenticated;
-        _restoreUser(userDataRaw);
-        
-        if (kDebugMode) {
-          debugPrint(
-            'Auth boot SUCCESS: Tokens restored from storage. '
-            'access=${access?.substring(0, 20)}... refresh=${refreshOk ? "YES" : "NO"}',
-          );
         }
-      } else {
-        // No valid tokens found - user needs to log in
-        state = AuthStatus.unauthenticated;
-        ref.read(authUserProvider.notifier).state = null;
-        
+        // Success - break out of retry loop
+        return;
+      } catch (e, stackTrace) {
+        attempt++;
         if (kDebugMode) {
-          debugPrint('Auth boot: No valid tokens found -> unauthenticated');
+          debugPrint('Auth boot FAILED (attempt $attempt/$_maxRetries). Error: $e');
+          debugPrint('Stack trace: $stackTrace');
         }
-      }
-    } catch (e, stackTrace) {
-      // Storage read failed - treat as unauthenticated but don't clear storage
-      // (in case it's a temporary issue)
-      ref.read(accessTokenProvider.notifier).state = null;
-      ref.read(refreshTokenProvider.notifier).state = null;
-      ref.read(authUserProvider.notifier).state = null;
 
-      state = AuthStatus.unauthenticated;
+        if (attempt <= _maxRetries) {
+          // Wait before retrying (storage may be temporarily unavailable)
+          if (kDebugMode) {
+            debugPrint('Auth boot: retrying in ${_retryDelay.inSeconds}s...');
+          }
+          await Future.delayed(_retryDelay);
+        } else {
+          // All retries exhausted - mark as unauthenticated but DON'T clear storage
+          // (tokens may still be there, just temporarily unreadable)
+          ref.read(accessTokenProvider.notifier).state = null;
+          ref.read(refreshTokenProvider.notifier).state = null;
+          ref.read(authUserProvider.notifier).state = null;
 
-      if (kDebugMode) {
-        debugPrint('Auth boot FAILED -> unauthenticated. Error: $e');
-        debugPrint('Stack trace: $stackTrace');
+          state = AuthStatus.unauthenticated;
+
+          if (kDebugMode) {
+            debugPrint('Auth boot: all retries exhausted -> unauthenticated');
+          }
+        }
       }
     }
   }

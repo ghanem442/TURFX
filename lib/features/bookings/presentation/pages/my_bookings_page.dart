@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import '../../data/models/booking_model.dart';
 import '../providers/booking_providers.dart';
 import '../providers/payment_local_store_provider.dart';
-import 'booking_confirmation_page.dart';
 
 class MyBookingsPage extends ConsumerStatefulWidget {
   const MyBookingsPage({super.key});

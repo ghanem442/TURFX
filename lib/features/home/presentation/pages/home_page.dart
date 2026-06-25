@@ -54,11 +54,12 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     // Get current user
     final user = ref.read(authUserProvider);
-    
+
     // Show welcome if user is logged in
     if (user != null && mounted) {
+      final ctx = context;
       await WelcomeService.showWelcomeAnimation(
-        context,
+        ctx,
         userName: user.name ?? 'User',
         userRole: user.role ?? 'PLAYER',
       );
@@ -74,29 +75,12 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget build(BuildContext context) {
     // Don't watch immediately - let initState handle the delayed fetch
     final fieldsAsync = ref.watch(fieldsProvider);
-    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.appTitle),
         actions: [
-          // Test welcome animation button (للتجربة فقط)
-          IconButton(
-            icon: const Icon(Icons.celebration),
-            tooltip: 'Test Welcome',
-            onPressed: () async {
-              await WelcomeService.resetWelcomeCooldown();
-              final user = ref.read(authUserProvider);
-              if (mounted) {
-                await WelcomeService.forceShowWelcome(
-                  context,
-                  userName: user?.name ?? 'Test User',
-                  userRole: user?.role ?? 'PLAYER',
-                );
-              }
-            },
-          ),
           Consumer(
             builder: (context, ref, _) {
               final mode = ref.watch(themeModeProvider);
@@ -163,14 +147,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               children: [
-                Text(
-                  'Home Screen',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 4),
                 Row(
                   children: [
                     Expanded(
@@ -277,29 +254,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                       );
                     },
                   ),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.orange,
-                        foregroundColor: Colors.white,
-                        textStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onPressed: () => context.push(
-                        '/field/${filtered.first.id}',
-                        extra: filtered.first,
-                      ),
-                      child: const Text('Book Now'),
-                    ),
-                  ),
+                  const SizedBox(height: 4),
                 ],
               ],
             ),

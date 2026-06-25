@@ -29,7 +29,6 @@ class _WelcomeAnimationState extends State<WelcomeAnimation>
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
   late Animation<double> _slideAnimation;
-  late Animation<double> _rotateAnimation;
 
   @override
   void initState() {
@@ -74,14 +73,6 @@ class _WelcomeAnimationState extends State<WelcomeAnimation>
       CurvedAnimation(
         parent: _textController,
         curve: Curves.easeOutCubic,
-      ),
-    );
-
-    // Rotate animation (subtle rotation)
-    _rotateAnimation = Tween<double>(begin: 0.0, end: 2 * math.pi).animate(
-      CurvedAnimation(
-        parent: _particleController,
-        curve: Curves.linear,
       ),
     );
 

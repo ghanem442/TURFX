@@ -322,17 +322,6 @@ class _FieldDetailsScaffold extends StatelessWidget {
               const SizedBox(height: 12),
             ],
             Text(
-              'Field Features',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const _FeatureRow(title: 'Synthetic grass'),
-            const _FeatureRow(title: 'Changing rooms'),
-            const _FeatureRow(title: 'Floodlights'),
-            const SizedBox(height: 12),
-            Text(
               'Location',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w900,
@@ -380,12 +369,6 @@ class _FieldDetailsScaffold extends StatelessWidget {
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Field ID: ${field.id}',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall,
             ),
           ],
         ),
@@ -558,22 +541,6 @@ class _RatingPill extends StatelessWidget {
   }
 }
 
-class _FeatureRow extends StatelessWidget {
-  final String title;
-
-  const _FeatureRow({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        dense: true,
-        leading: const Icon(Icons.check_circle, color: AppColors.green),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-      ),
-    );
-  }
-}
 
 String _priceText(FieldModel f) {
   final price = f.basePrice;

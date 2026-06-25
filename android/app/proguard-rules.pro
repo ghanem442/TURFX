@@ -1,6 +1,16 @@
-# Flutter
+# Flutter - Keep ALL Flutter classes
 -keep class io.flutter.** { *; }
 -keep class io.flutter.plugins.** { *; }
+-keep class io.flutter.embedding.** { *; }
+-keep class io.flutter.embedding.android.FlutterActivity { *; }
+-keep class io.flutter.embedding.android.FlutterFragmentActivity { *; }
+
+# Keep MainActivity explicitly
+-keep class ahmed.turfx.com.MainActivity { *; }
+-keep class ahmed.turfx.com.** { *; }
+
+# Multidex
+-keep class androidx.multidex.** { *; }
 
 # Firebase
 -keep class com.firebase.** { *; }
@@ -21,10 +31,6 @@
 
 # Preserve line numbers for debugging
 -keepattributes SourceFile,LineNumberTable
-
-# Keep model classes used for JSON serialization
--keep class ahmed.turfx.com.** { *; }
--keep class com.example.football.** { *; }
 
 # Keep all data models and DTOs
 -keep class **.models.** { *; }
@@ -54,15 +60,39 @@
 }
 -keep @interface com.google.gson.annotations.SerializedName
 
-# Play Core compatibility for deferred components
+# Play Core
 -keep class com.google.android.play.core.** { *; }
-
-# Keep Play Core classes for Flutter deferred components
 -dontwarn com.google.android.play.core.**
--keep class com.google.android.play.core.** { *; }
 
-# Additional Flutter embedding rules
+# Flutter embedding - explicitly keep all
 -keep class io.flutter.** { *; }
 -keep class io.flutter.plugins.** { *; }
--dontwarn io.flutter.embedding.**
 -keep class * extends io.flutter.embedding.engine.plugins.FlutterPlugin { *; }
+-keep class * extends io.flutter.plugin.common.MethodCallHandler { *; }
+-dontwarn io.flutter.embedding.**
+
+# GeneratedPluginRegistrant
+-keep class io.flutter.plugins.GeneratedPluginRegistrant { *; }
+
+# flutter_secure_storage - CRITICAL: prevents ClassNotFoundException crash & auto-logout
+-keep class com.it_nomads.fluttersecurestorage.** { *; }
+-keep class androidx.security.crypto.** { *; }
+-keep class androidx.security.** { *; }
+-dontwarn androidx.security.**
+-keep class com.google.crypto.tink.** { *; }
+-dontwarn com.google.crypto.tink.**
+
+# EncryptedSharedPreferences (used by flutter_secure_storage)
+-keep class androidx.security.crypto.EncryptedSharedPreferences { *; }
+-keep class androidx.security.crypto.MasterKey { *; }
+-keep class androidx.security.crypto.MasterKey$Builder { *; }
+
+# Keep all plugin classes to prevent ClassNotFoundException
+-keep class ** implements io.flutter.embedding.engine.plugins.FlutterPlugin { *; }
+-keep class ** implements io.flutter.plugin.common.MethodCallHandler { *; }
+
+# Prevent R8 from stripping needed classes
+-keepclassmembers class * {
+    @androidx.annotation.Keep *;
+}
+

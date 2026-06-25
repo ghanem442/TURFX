@@ -219,6 +219,7 @@ class _AddFieldPageState extends ConsumerState<AddFieldPage> {
     );
 
     if (confirm != true) return;
+    if (!mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
     final repo = ref.read(ownerRepositoryProvider);
@@ -425,7 +426,7 @@ class _AddFieldPageState extends ConsumerState<AddFieldPage> {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.7),
+                          color: Colors.black.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: const Text(
@@ -442,7 +443,7 @@ class _AddFieldPageState extends ConsumerState<AddFieldPage> {
                     right: 6,
                     top: 6,
                     child: Material(
-                      color: Colors.black.withOpacity(0.65),
+                      color: Colors.black.withValues(alpha: 0.65),
                       borderRadius: BorderRadius.circular(999),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(999),
@@ -554,7 +555,7 @@ class _AddFieldPageState extends ConsumerState<AddFieldPage> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.7),
+                            color: Colors.black.withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: const Text(
@@ -571,7 +572,7 @@ class _AddFieldPageState extends ConsumerState<AddFieldPage> {
                       right: 6,
                       top: 6,
                       child: Material(
-                        color: Colors.black.withOpacity(0.65),
+                        color: Colors.black.withValues(alpha: 0.65),
                         borderRadius: BorderRadius.circular(999),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(999),

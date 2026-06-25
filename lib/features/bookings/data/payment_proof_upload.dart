@@ -29,7 +29,8 @@ class PaymentProofUpload {
     defaultValue: 'file',
   );
 
-  static Uri _uploadUri() {
+  /// Resolves the full upload URI from base URL and configured path
+  static Uri uploadUri() {
     final base = resolveApiBaseUrl().trim();
     final path = uploadPath.trim().startsWith('/')
         ? uploadPath.trim().substring(1)

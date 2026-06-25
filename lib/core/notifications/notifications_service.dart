@@ -161,7 +161,8 @@ class NotificationsService {
     }
   }
 
-  Future<void> _showLocalNotification({
+  /// Shows a local notification — used when FCM message is received in foreground
+  Future<void> showLocalNotification({
     required String title,
     required String body,
     required AppNotificationPayload payload,
@@ -190,7 +191,8 @@ class NotificationsService {
     );
   }
 
-  void _showInAppSnack(AppNotificationPayload payload) {
+  /// Shows in-app snackbar notification
+  void showInAppSnack(AppNotificationPayload payload) {
     final context = rootNavigatorKey.currentContext;
     if (context == null) return;
 
@@ -241,7 +243,8 @@ class NotificationsService {
     }
   }
 
-  String _defaultTitle(AppNotificationPayload payload) {
+  /// Returns default notification title based on payload type
+  String defaultTitle(AppNotificationPayload payload) {
     switch (payload.type) {
       case AppNotificationType.paymentApproved:
         return 'Payment Approved';
@@ -254,7 +257,8 @@ class NotificationsService {
     }
   }
 
-  String _defaultBody(AppNotificationPayload payload) {
+  /// Returns default notification body based on payload type
+  String defaultBody(AppNotificationPayload payload) {
     switch (payload.type) {
       case AppNotificationType.paymentApproved:
         return 'Your payment has been approved and your booking is confirmed.';

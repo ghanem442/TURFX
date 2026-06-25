@@ -135,78 +135,108 @@ class _SplashPageState extends ConsumerState<SplashPage> with SingleTickerProvid
         return;
       }
 
+      // محاولة تحديث بيانات المستخدم من السيرفر
       final me = await repo.getCurrentUser();
 
       if (!mounted) return;
 
-      if (me.success != true) {
-        await session.logout();
+      if (me.success == true) {
+        // ✅ الـ API نجح — حدّث بيانات المستخدم
+        final data = me.data;
+        final userMap = (data['user'] is Map)
+            ? (data['user'] as Map).cast<String, dynamic>()
+            : (data['data'] is Map)
+                ? (data['data'] as Map).cast<String, dynamic>()
+                : data;
+
+        final email = (userMap['email'] ?? '').toString().trim();
+        final isVerified = userMap['isVerified'] == true;
+        final name = userMap['name']?.toString().trim();
+        final role = userMap['role']?.toString();
+        final id = userMap['id']?.toString();
+
+        if (email.isEmpty) {
+          // البيانات فارغة — token منتهي
+          await session.logout();
+          await _delayTransition(stopwatch);
+          if (!mounted) return;
+          context.go('/login');
+          return;
+        }
+
+        session.saveUser(
+          email: email,
+          isVerified: isVerified,
+          name: (name != null && name.isNotEmpty) ? name : null,
+          role: role,
+          id: id,
+        );
+
+        if (!mounted) return;
+
+        if (!isVerified) {
+          await _delayTransition(stopwatch);
+          if (!mounted) return;
+          context.go('/verify-email', extra: email);
+          return;
+        }
+
         await _delayTransition(stopwatch);
         if (!mounted) return;
-        context.go('/login');
-        return;
-      }
+        context.go(_homeRouteForRole(role));
+      } else {
+        // ❌ الـ API فشل — نتحقق هل السبب token منتهي (401) أم مشكلة شبكة/سيرفر
+        final rawData = me.data;
+        final statusCode = rawData['statusCode'] as int?;
 
-      final data = me.data;
-      final userMap = (data['user'] is Map)
-          ? (data['user'] as Map).cast<String, dynamic>()
-          : (data['data'] is Map)
-              ? (data['data'] as Map).cast<String, dynamic>()
-              : data;
+        if (statusCode == 401) {
+          // Token منتهي فعلاً — logout وروّح للـ login
+          await session.logout();
+          await _delayTransition(stopwatch);
+          if (!mounted) return;
+          context.go('/login');
+          return;
+        }
 
-      final email = (userMap['email'] ?? '').toString().trim();
-      final isVerified = userMap['isVerified'] == true;
-      final name = userMap['name']?.toString().trim();
-      final role = userMap['role']?.toString();
-      final id = userMap['id']?.toString();
+        // مشكلة شبكة أو سيرفر (5xx, timeout, etc.)
+        // نفضّل المستخدم متسجل ونروّح الـ home بالبيانات المحفوظة
+        final cachedUser = ref.read(authUserProvider);
+        final role = cachedUser?.role;
 
-      if (email.isEmpty) {
-        await session.logout();
         await _delayTransition(stopwatch);
         if (!mounted) return;
-        context.go('/login');
-        return;
+        context.go(_homeRouteForRole(role));
       }
-
-      session.saveUser(
-        email: email,
-        isVerified: isVerified,
-        name: (name != null && name.isNotEmpty) ? name : null,
-        role: role,
-        id: id,
-      );
-
-      if (!mounted) return;
-
-      if (!isVerified) {
-        await _delayTransition(stopwatch);
-        if (!mounted) return;
-        context.go('/verify-email', extra: email);
-        return;
-      }
-
-      await _delayTransition(stopwatch);
-      if (!mounted) return;
-      context.go(_homeRouteForRole(role));
     } catch (e) {
       if (mounted) {
         setState(() {
           _showRetryButton = true;
         });
       }
-      final session = ref.read(authSessionProvider.notifier);
-      await session.logout();
 
-      // Wait for delay to let the user see what's happening or try to retry
-      await _delayTransition(stopwatch);
-      if (!mounted) return;
-      if (!_showRetryButton) {
-        context.go('/login');
+      // في حالة استثناء غير متوقع — نفضّل المستخدم متسجل بدل logout
+      // إلا لو ماكانش عنده token أصلاً
+      final auth = ref.read(authSessionProvider);
+      if (auth != AuthStatus.authenticated) {
+        await _delayTransition(stopwatch);
+        if (!mounted) return;
+        if (!_showRetryButton) {
+          context.go('/login');
+        }
+      } else {
+        // عنده token — روّحه الـ home بدل ما تعمل logout
+        await _delayTransition(stopwatch);
+        if (!mounted) return;
+        if (!_showRetryButton) {
+          final cachedUser = ref.read(authUserProvider);
+          context.go(_homeRouteForRole(cachedUser?.role));
+        }
       }
     } finally {
       _started = false;
     }
   }
+
 
   Future<void> _delayTransition(Stopwatch stopwatch) async {
     const minDuration = Duration(seconds: 3);

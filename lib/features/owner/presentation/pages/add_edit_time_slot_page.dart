@@ -222,6 +222,7 @@ class _AddEditTimeSlotPageState extends ConsumerState<AddEditTimeSlotPage> {
         );
         
         // Return success with the date so the list refreshes
+        if (!mounted) return;
         context.pop({'success': true, 'date': _selectedDate});
         return;
       }

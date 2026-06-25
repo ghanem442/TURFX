@@ -139,7 +139,7 @@ class _PaymentAccountCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withOpacity(.5),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: .5),
         ),
       ),
       child: Padding(

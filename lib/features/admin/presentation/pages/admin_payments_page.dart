@@ -450,7 +450,7 @@ class _PaymentCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withOpacity(.5),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: .5),
         ),
       ),
       child: Padding(
@@ -676,7 +676,7 @@ class _Section extends StatelessWidget {
         color: Theme.of(context)
             .colorScheme
             .surfaceContainerHighest
-            .withOpacity(.35),
+            .withValues(alpha: .35),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Padding(

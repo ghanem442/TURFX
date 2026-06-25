@@ -354,7 +354,7 @@ class _BalanceCard extends StatelessWidget {
         color: theme.cardColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -366,7 +366,7 @@ class _BalanceCard extends StatelessWidget {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withOpacity(0.10),
+              color: theme.colorScheme.primary.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Icon(
@@ -480,7 +480,7 @@ class _TxTile extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.10),
+            color: color.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(

@@ -67,6 +67,29 @@ class AuthInterceptor extends Interceptor {
   }
 
   @override
+  void onResponse(Response response, ResponseInterceptorHandler handler) {
+    final status = response.statusCode;
+    final request = response.requestOptions;
+
+    // Reject 401 response to trigger onError if it is not already a retry or a refresh request
+    final alreadyRetried = request.extra['__retried__'] == true;
+    if (status == 401 && !alreadyRetried && !_isAuthRefreshRequest(request)) {
+      _log('401 detected in response -> turning into DioException to trigger token refresh');
+      handler.reject(
+        DioException(
+          requestOptions: request,
+          response: response,
+          type: DioExceptionType.badResponse,
+          message: 'Unauthorized (401)',
+        ),
+      );
+      return;
+    }
+
+    handler.next(response);
+  }
+
+  @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     final status = err.response?.statusCode;
     final request = err.requestOptions;
